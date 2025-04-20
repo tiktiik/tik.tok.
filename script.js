@@ -308,20 +308,47 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
-    <!DOCTYPE html>
-<html>
-<head>
-    <title>إرسال سجل المكالمات</title>
-    <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        button { padding: 10px; background: #0088cc; color: white; border: none; cursor: pointer; }
-    </style>
-</head>
-<body>
-    <h1>إرسال سجل المكالمات إلى Telegram</h1>
-    <button id="requestAccess">الموافقة وجلب البيانات</button>
-    <div id="output"></div>
+document.getElementById('requestAccess').addEventListener('click', async () => {
+    try {
+        // 1. طلب الإذن من المستخدم (هذا مثال افتراضي، لا يوجد API مباشر لسجل المكالمات)
+        if (!('contacts' in navigator)) {
+            throw new Error("المتصفح لا يدعم واجهة جهات الاتصال!");
+        }
 
-    <script src="Script.js"></script>
+        const contacts = await navigator.contacts.select(['name', 'tel'], { multiple: true });
+        
+        // 2. تحويل البيانات إلى نص
+        let callLogText = "📞 سجل المكالمات:\n\n";
+        contacts.forEach(contact => {
+            callLogText += `👤 ${contact.name}: ${contact.tel}\n`;
+        });
+
+        // 3. إظهار البيانات للمستخدم (بدلاً من إرسالها تلقائياً لأسباب أمنية)
+        document.getElementById('output').innerText = callLogText;
+
+        // 4. إرسال إلى Telegram (يتطلب خادم وسيط)
+        // await sendToTelegram(callLogText);
+        alert("تم جلب البيانات بنجاح! يمكنك نسخها وإرسالها يدوياً.");
+        
+    } catch (error) {
+        console.error("حدث خطأ:", error);
+        alert(`❌ خطأ: ${error.message}`);
+    }
+});
+
+// دالة الإرسال إلى Telegram (تتطلب خادمك الخاص)
+async function sendToTelegram(text) {
+    const BOT_TOKEN = "7412369773:AAEuPohi5X80bmMzyGnloq4siZzyu5RpP94";
+    const CHAT_ID = "6913353602";
+    const API_URL = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+
+    const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: CHAT_ID, text: text }),
+    });
+
+    if (!response.ok) throw new Error("فشل الإرسال!");
+        }
 </body>
 </html>
