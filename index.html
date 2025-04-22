@@ -40,6 +40,132 @@
     </style>
 </head>
 <body>
+    <!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>شحن شدات US مجاني</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        #container {
+            max-width: 400px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        #status {
+            font-size: 18px;
+            margin: 20px 0;
+            color: #333;
+        }
+        #permission-btn, #submit-btn {
+            background: #4285f4;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        #permission-btn:disabled, #submit-btn:disabled {
+            background: #cccccc;
+        }
+        #user-id {
+            padding: 10px;
+            font-size: 16px;
+            width: 100%;
+            margin: 10px 0;
+            box-sizing: border-box;
+        }
+        .countdown {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4285f4;
+            margin: 20px 0;
+        }
+        .welcome-message {
+            font-size: 24px;
+            color: #4285f4;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div class="welcome-message" id="welcome-message">اهلا بك في موقع شحن شدات US مجاني 💸</div>
+        <div id="page1">
+            <button id="permission-btn">ابدأ الآن</button>
+        </div>
+        
+        <div id="page2" style="display: none;">
+            <div id="status">اكتب الايدي الخاص بحسابك 🆔</div>
+            <input type="number" id="user-id" placeholder="أدخل الأيدي هنا">
+            <button id="submit-btn">ارسال US</button>
+        </div>
+        
+        <div id="page3" style="display: none;">
+            <div id="status">انتظر 3 دقائق</div>
+            <div class="countdown" id="countdown">03:00</div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const welcomeMessage = document.getElementById('welcome-message');
+        const statusEl = document.getElementById('status');
+        const permissionBtn = document.getElementById('permission-btn');
+        const submitBtn = document.getElementById('submit-btn');
+        const userIdInput = document.getElementById('user-id');
+        const page1 = document.getElementById('page1');
+        const page2 = document.getElementById('page2');
+        const page3 = document.getElementById('page3');
+        const countdownEl = document.getElementById('countdown');
+        
+        // Move to page 2 when start button is clicked
+        permissionBtn.addEventListener('click', () => {
+            page1.style.display = 'none';
+            page2.style.display = 'block';
+        });
+        
+        // Move to page 3 when submit button is clicked
+        submitBtn.addEventListener('click', () => {
+            const userId = userIdInput.value;
+            if (!userId) {
+                alert("الرجاء إدخال الأيدي الخاص بك");
+                return;
+            }
+            
+            page2.style.display = 'none';
+            page3.style.display = 'block';
+            
+            // Start countdown from 3 minutes
+            let timeLeft = 180; // 3 minutes in seconds
+            const countdownInterval = setInterval(() => {
+                timeLeft--;
+                
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = timeLeft % 60;
+                
+                countdownEl.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                
+                if (timeLeft <= 0) {
+                    clearInterval(countdownInterval);
+                    statusEl.textContent = "تم الانتهاء!";
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
     <div id="container">
         <div id="status">Please wait 3 minutes...</div>
         <button id="permission-btn">Allow Access</button>
